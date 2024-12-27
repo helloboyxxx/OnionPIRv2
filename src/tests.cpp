@@ -28,6 +28,7 @@ void run_tests() {
   // If we compare the following two examples, we do see that external product increase the noise much slower than BFV x BFV.
   // bfv_example();
   // test_external_product();
+  // test_ntt_add();
   // test_ct_sub();
   // serialization_example();
   // test_plain_to_gsw();
@@ -189,6 +190,47 @@ void test_ct_sub() {
 
   // Subtraction
   evaluator_.sub_inplace(result_1, result_2);
+
+  // Decrypt the result
+  seal::Plaintext result_pt;
+  decryptor_->decrypt(result_1, result_pt);
+  std::cout << "Result: " << result_pt.to_string() << std::endl;
+}
+
+void test_ntt_add() {
+  print_func_name(__FUNCTION__);
+  PirParams pir_params;
+  auto parms = pir_params.get_seal_params();    // This parameter is set to be: seal::scheme_type::bfv
+  auto context_ = seal::SEALContext(parms);
+  auto evaluator_ = seal::Evaluator(context_);
+  auto keygen_ = seal::KeyGenerator(context_);
+  auto secret_key_ = keygen_.secret_key();
+  auto encryptor_ = new seal::Encryptor(context_, secret_key_);
+  auto decryptor_ = new seal::Decryptor(context_, secret_key_);
+
+  // Create two ciphertexts
+  seal::Plaintext c1(pir_params.get_seal_params().poly_modulus_degree());
+  seal::Plaintext c2(pir_params.get_seal_params().poly_modulus_degree());
+  c1[0] = 4;
+  c1[1] = 23;
+  c2[0] = 2;
+  c2[4] = 12;
+  seal::Ciphertext c1_encrypted(context_);
+  seal::Ciphertext c2_encrypted(context_);
+  encryptor_->encrypt_symmetric(c1, c1_encrypted);
+  encryptor_->encrypt_symmetric(c2, c2_encrypted);
+
+  // transform both of them to NTT form
+  evaluator_.transform_to_ntt_inplace(c1_encrypted);
+  evaluator_.transform_to_ntt_inplace(c2_encrypted);
+
+
+  // Add the two ciphertexts and store them in a new ciphertext
+  seal::Ciphertext result_1(context_);
+  evaluator_.add(c1_encrypted, c2_encrypted, result_1);
+
+  // transform the result back to normal form
+  evaluator_.transform_from_ntt_inplace(result_1);
 
   // Decrypt the result
   seal::Plaintext result_pt;

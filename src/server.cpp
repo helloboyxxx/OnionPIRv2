@@ -258,7 +258,8 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
     auto &y = result[i + block_size];
     evaluator_.sub_inplace(y, x);  // y - x
     data_gsw.external_product(selection_cipher, y, y);  // b * (y - x)
-    data_gsw.ciphertext_inverse_ntt(y);
+    y.is_ntt_form() = true;
+    evaluator_.transform_from_ntt_inplace(y);
     evaluator_.add_inplace(result[i], y);  // x + b * (y - x)
   }
   result.resize(block_size);
@@ -398,6 +399,9 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
   }
   auto other_dim_end = CURR_TIME;
 
+
+  // change the final result to coefficient form
+  // evaluator_.transform_from_ntt_inplace(result[0]);
 
   // ========================== Post-processing ==========================
   // modulus switching so to reduce the response size by half

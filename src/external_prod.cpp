@@ -22,12 +22,12 @@ void GSWEval::gsw_ntt_negacyclic_harvey(GSWCiphertext &gsw) {
 
   for (auto &poly : gsw) {
     seal::util::CoeffIter gsw_poly_ptr(poly.data());
-    for (int i = 0; i < coeff_mod_count; i++) {
-      seal::util::ntt_negacyclic_harvey(gsw_poly_ptr + coeff_count * i, *(ntt_tables + i));
+    for (int mod_id = 0; mod_id < coeff_mod_count; mod_id++) {
+      seal::util::ntt_negacyclic_harvey(gsw_poly_ptr + coeff_count * mod_id, *(ntt_tables + mod_id));
     }
     seal::util::CoeffIter gsw_poly_ptr2(poly.data() + coeff_count * coeff_mod_count);
-    for (int i = 0; i < coeff_mod_count; i++) {
-      seal::util::ntt_negacyclic_harvey(gsw_poly_ptr2 + coeff_count * i, *(ntt_tables + i));
+    for (int mod_id = 0; mod_id < coeff_mod_count; mod_id++) {
+      seal::util::ntt_negacyclic_harvey(gsw_poly_ptr2 + coeff_count * mod_id, *(ntt_tables + mod_id));
     }
   }
 }
@@ -54,23 +54,17 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
   const auto &context_data = context->first_context_data();
   const auto &parms2 = context_data->parms();
   const auto &coeff_modulus = parms2.coeff_modulus();
-  const size_t coeff_count = parms2.poly_modulus_degree();  // 4096
-  const size_t coeff_mod_count = coeff_modulus.size();  // 2
-  const auto ntt_tables = context_data->small_ntt_tables();
+  const size_t coeff_count = parms2.poly_modulus_degree();
+  const size_t coeff_mod_count = coeff_modulus.size();  // rns mod count
 
+  // Decomposing the BFV ciphertext to 2l polynomials. Transform to NTT form.
   std::vector<std::vector<uint64_t>> decomposed_bfv;
   decomp_rlwe(bfv, decomposed_bfv);
-
-  for (auto &poly : decomposed_bfv) {
-    seal::util::CoeffIter bfv_poly_ptr(poly);
-    for (int i = 0; i < coeff_mod_count; i++) {
-      seal::util::ntt_negacyclic_harvey(bfv_poly_ptr + coeff_count * i, *(ntt_tables + i));
-    }
-  }
 
   std::vector<std::vector<uint128_t>> result(
       2, std::vector<uint128_t>(coeff_count * coeff_mod_count, 0));
 
+  // matrix multiplication: decomp(bfv) * gsw = (1 x 2l) * (2l x 2) = (1 x 2)
   for (int k = 0; k < 2; ++k) {
     for (size_t j = 0; j < 2 * l; j++) {
       seal::util::ConstCoeffIter encrypted_gsw_ptr(gsw_enc[j].data() +
@@ -81,6 +75,7 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
     }
   }
 
+  // taking mods.
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     auto ct_ptr = res_ct.data(poly_id);
     auto pt_ptr = result[poly_id];
@@ -88,7 +83,6 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
     for (int mod_id = 0; mod_id < coeff_mod_count; mod_id++) {
       auto mod_idx = (mod_id * coeff_count);
       for (int coeff_id = 0; coeff_id < coeff_count; coeff_id++) {
-        // ct_ptr[coeff_id + mod_idx] = static_cast<uint64_t>(pt_ptr[coeff_id + mod_idx] % mod);
         auto x = pt_ptr[coeff_id + mod_idx];
         uint64_t raw[2] = {static_cast<uint64_t>(x), static_cast<uint64_t>(x >> 64)};
         ct_ptr[coeff_id + mod_idx] = util::barrett_reduce_128(raw, coeff_modulus[mod_id]);
@@ -138,6 +132,12 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
       }
 
       rns_base->decompose_array(row.data(), coeff_count, pool);
+
+      // transform to NTT form
+      const auto ntt_tables = context_data->small_ntt_tables();
+      for (int i = 0; i < coeff_mod_count; i++) {
+        seal::util::ntt_negacyclic_harvey(row.data() + coeff_count * i, ntt_tables[i]);
+      }
 
       output.emplace_back(std::move(row));
     }
