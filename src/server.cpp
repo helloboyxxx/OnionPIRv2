@@ -173,36 +173,36 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   */
 
   const size_t one_ct_size = num_poly * coeff_val_cnt;
-  const size_t tile_size = 8;
-
-  for (size_t k_base = 0; k_base < fst_dim_sz; k_base += tile_size) {
-    for (size_t j = 0; j < other_dim_sz; ++j) {
-      for (size_t k = k_base; k < std::min(k_base + tile_size, fst_dim_sz); k++) {
-        for (size_t poly_id = 0; poly_id < num_poly; poly_id++) {
-          // j are already filled with the results
-          auto inter_shift = j * one_ct_size + poly_id * coeff_val_cnt;
-          utils::multiply_poly_acum(fst_dim_query[k].data(poly_id),
-                                    (*db_[fst_dim_sz * j + k]).data(),
-                                    coeff_val_cnt, inter_res.data() + inter_shift);
-        }
-      }
-    }
-  }
 
 
+  // const size_t tile_size = 8;
 
-
-  // for (size_t j = 0; j < other_dim_sz; ++j) {
-  //   for (size_t k = 0; k < fst_dim_sz; k++) {
-  //     for (size_t poly_id = 0; poly_id < num_poly; poly_id++) {
-  //       // j are already filled with the results
-  //       auto inter_shift = j * one_ct_size + poly_id * coeff_val_cnt;
-  //       utils::multiply_poly_acum(fst_dim_query[k].data(poly_id),
-  //                                 (*db_[fst_dim_sz * j + k]).data(),
-  //                                 coeff_val_cnt, inter_res.data() + inter_shift);
+  // for (size_t k_base = 0; k_base < fst_dim_sz; k_base += tile_size) {
+  //   for (size_t j = 0; j < other_dim_sz; ++j) {
+  //     for (size_t k = k_base; k < std::min(k_base + tile_size, fst_dim_sz); k++) {
+  //       for (size_t poly_id = 0; poly_id < num_poly; poly_id++) {
+  //         // j are already filled with the results
+  //         auto inter_shift = j * one_ct_size + poly_id * coeff_val_cnt;
+  //         utils::multiply_poly_acum(fst_dim_query[k].data(poly_id),
+  //                                   (*db_[fst_dim_sz * j + k]).data(),
+  //                                   coeff_val_cnt, inter_res.data() + inter_shift);
+  //       }
   //     }
   //   }
   // }
+
+
+  for (size_t j = 0; j < other_dim_sz; ++j) {
+    for (size_t k = 0; k < fst_dim_sz; k++) {
+      for (size_t poly_id = 0; poly_id < num_poly; poly_id++) {
+        // j are already filled with the results
+        auto inter_shift = j * one_ct_size + poly_id * coeff_val_cnt;
+        utils::multiply_poly_acum(fst_dim_query[k].data(poly_id),
+                                  (*db_[fst_dim_sz * j + k]).data(),
+                                  coeff_val_cnt, inter_res.data() + inter_shift);
+      }
+    }
+  }
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
   std::vector<seal::Ciphertext> result; // output vector
