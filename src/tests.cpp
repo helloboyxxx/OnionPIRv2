@@ -29,6 +29,7 @@ void run_tests() {
   // bfv_example();
   // test_external_product();
   // test_ntt_add();
+  // test_ntt_scalar_mul();
   // test_ct_sub();
   // serialization_example();
   // test_plain_to_gsw();
@@ -145,7 +146,8 @@ void test_external_product() {
 
   for (int i = 0; i < mult_rounds; i++) {
     data_gsw.external_product(b_gsw, a_encrypted, a_encrypted);
-    data_gsw.ciphertext_inverse_ntt(a_encrypted);
+    a_encrypted.is_ntt_form() = true;
+    evaluator_.transform_from_ntt_inplace(a_encrypted);
     decryptor_.decrypt(a_encrypted, result);
     std::cout << "Noise budget after: " << decryptor_.invariant_noise_budget(a_encrypted)
               << std::endl;
@@ -235,6 +237,42 @@ void test_ntt_add() {
   // Decrypt the result
   seal::Plaintext result_pt;
   decryptor_->decrypt(result_1, result_pt);
+  std::cout << "Result: " << result_pt.to_string() << std::endl;
+}
+
+// create a ciphtertext and transform it to ntt form. Then multiply it with a scalar.
+void test_ntt_scalar_mul() {
+  print_func_name(__FUNCTION__);
+  PirParams pir_params;
+  auto parms = pir_params.get_seal_params();    // This parameter is set to be: seal::scheme_type::bfv
+  auto context_ = seal::SEALContext(parms);
+  auto evaluator_ = seal::Evaluator(context_);
+  auto keygen_ = seal::KeyGenerator(context_);
+  auto secret_key_ = keygen_.secret_key();
+  auto encryptor_ = new seal::Encryptor(context_, secret_key_);
+  auto decryptor_ = new seal::Decryptor(context_, secret_key_);
+
+  // Create a ciphertext
+  seal::Plaintext c(pir_params.get_seal_params().poly_modulus_degree());
+  c[1] = 4;
+  c[0] = 3;
+  seal::Ciphertext c_encrypted(context_);
+  encryptor_->encrypt_symmetric(c, c_encrypted);
+
+  // transform it to NTT form
+  // evaluator_.transform_to_ntt_inplace(c_encrypted);
+
+  // we use seal::util::left_shift_uint to do the scalar multiplication
+  seal::util::left_shift_uint(c_encrypted.data(0), 2, 1, c_encrypted.data(0));
+  seal::util::left_shift_uint(c_encrypted.data(1), 2, 1, c_encrypted.data(1));
+
+  // transform the result back to normal form
+  // c_encrypted.is_ntt_form() = true;
+  // evaluator_.transform_from_ntt_inplace(c_encrypted);
+
+  // Decrypt the result
+  seal::Plaintext result_pt;
+  decryptor_->decrypt(c_encrypted, result_pt);
   std::cout << "Result: " << result_pt.to_string() << std::endl;
 }
 
