@@ -119,10 +119,10 @@ gsw_gadget(size_t l, uint64_t base_log2, size_t coeff_mod_count,
 // Generate a prime that is bit_width long
 std::uint64_t generate_prime(size_t bit_width);
 
-void idxToEntry(const uint64_t idx, Entry &entry);
+void writeIdxToEntry(const uint64_t idx, Entry &entry);
 
-// Given the entry, check if the first 8 bytes has the correct index
-bool check_entry_idx(const Entry &entry, const uint64_t query_idx);
+// Extract first 8 bytes of the given Entry and format it as a uint64_t and return.
+uint64_t get_entry_idx(const Entry &entry);
 
 void print_entry(const Entry &entry);
 

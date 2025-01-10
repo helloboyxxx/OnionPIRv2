@@ -137,30 +137,22 @@ std::uint64_t generate_prime(size_t bit_width) {
   return candidate;
 }
 
-// converting a uint64_t to a std::vector<uint8_t> of size 8
-void idxToEntry(const uint64_t idx, Entry &entry) {
-  // Convert id to bytes and push them to the entry.
-  for (int i = 7; i >= 0; --i) {
-      // Shift the value to the right and mask the lowest byte, then push it to the vector
-      entry.push_back(static_cast<uint8_t>(idx >> (i * 8)));
+// converting a uint64_t to a std::vector<uint8_t> of size 8. Assyming the input vector has at least 8 elements.
+void writeIdxToEntry(const uint64_t idx, Entry &entry) {
+  // Convert id to bytes and write them to the start of the entry.
+  for (int i = 0; i < 8; ++i) {
+    // Extract the i-th byte from the least significant to the most significant
+    entry[7 - i] = static_cast<uint8_t>((idx >> (i * 8)) & 0xFF);
   }
 }
 
-bool check_entry_idx(const Entry &entry, const uint64_t query_idx) {
-  Entry query_entry;
-  idxToEntry(query_idx, query_entry);
-
-  bool flag = true;
-  // compare the first 8 bytes of the entry with the query_idx
-  for (int i = 0; i < query_entry.size(); i++) {
-    if (entry[i] != query_entry[i]) {
-      DEBUG_PRINT("entry[" << i << "] = " << (int)entry[i] << " query_entry[" << i << "] = " << (int)query_entry[i]);
-      flag = false;
-    }
+uint64_t get_entry_idx(const Entry &entry) {
+  uint64_t idx = 0;
+  for (int i = 0; i < 8; ++i) {
+    idx |= static_cast<uint64_t>(entry[7 - i]) << (i * 8);
   }
-  return flag;
+  return idx;
 }
-
 
 
 void print_entry(const Entry &entry) {
@@ -221,7 +213,13 @@ void print_progress(size_t current, size_t total) {
 
 Entry generate_entry(const uint64_t entry_id, const size_t entry_size, std::ifstream &random_file) {
   Entry entry(entry_size);
-  random_file.read(reinterpret_cast<char *>(entry.data()), entry_size);
+
+  // write the entry_id to the first 8 bytes of the entry
+  writeIdxToEntry(entry_id, entry);
+
+  // fill the rest of the entry with random bytes
+  // random_file.read(reinterpret_cast<char *>(entry.data()), entry_size);
+  random_file.read(reinterpret_cast<char *>(entry.data() + 8), entry_size - 8);
   return entry;
 }
 

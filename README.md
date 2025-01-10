@@ -11,5 +11,5 @@ make
 ./Onion-PIR
 ```
 
-
+If using clangd, you can use `cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON .` to generate the `compile_commands.json`.
 

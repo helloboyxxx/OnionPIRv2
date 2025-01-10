@@ -429,7 +429,11 @@ void test_pir() {
     // Directly get the plaintext from server. Not part of PIR.
     Entry actual_entry = server.direct_get_entry(entry_index);
 
+    // extract and print the actual entry index
+    uint64_t actual_entry_idx = get_entry_idx(actual_entry);
+
     // ============= PRINTING RESULTS ===============    
+    BENCH_PRINT("\t\tActual Entry Index:\t" << actual_entry_idx);
     BENCH_PRINT("\t\tServer time:\t" << TIME_DIFF(s_start_time, s_end_time) << " ms");
     BENCH_PRINT("\t\tClient Time:\t" << TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time) << " ms"); 
     BENCH_PRINT("\t\tNoise budget:\t" << client.get_decryptor()->invariant_noise_budget(result[0]));
