@@ -34,8 +34,10 @@ void run_tests() {
   // serialization_example();
   // test_plain_to_gsw();
 
-  test_pir();
+  // test_pir();
+
   // test_prime_gen();
+  test_reading_memory();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -477,4 +479,106 @@ void test_prime_gen() {
   for (size_t i = 2; i < 65; ++i) {
     DEBUG_PRINT(generate_prime(i));
   }
+}
+
+
+void test_reading_memory() {
+    print_func_name(__FUNCTION__);
+  // This test generate a super simple plaintext database in coefficient form. Then we
+  // simply try to read all the uint64_t values from the database and perform a
+  // simple operation on them. The goal is to force reading the database once.
+  // We want to know the cache performance.
+
+  // For comparison, we create another vector of the same size (same number
+  // of uint64_t values) and perform the same operation on them.
+
+  // Setup PIR param for convenience
+  PirParams pir_params;
+  const size_t num_pt = pir_params.get_num_pt();
+  const auto seal_params = pir_params.get_seal_params();
+  const auto context = seal::SEALContext(seal_params);
+  const size_t coeff_count = seal_params.poly_modulus_degree();
+  const size_t coeff_mod_count = context.first_context_data()->parms().coeff_modulus().size();
+
+  std::cout << "num_pt: " << num_pt << std::endl;
+  std::cout << "coeff_count: " << coeff_count << std::endl;
+  std::cout << "coeff_mod_count: " << coeff_mod_count << std::endl;
+
+  // Plaintext database
+  Database db = std::make_unique<std::optional<seal::Plaintext>[]>(num_pt);
+
+  BENCH_PRINT("Generating the database...");
+  for (size_t i = 0; i < num_pt; i++) {
+    auto curr_pt = seal::Plaintext(coeff_count);
+    for (size_t j = 0; j < coeff_count; j++) {
+      curr_pt[j] = i * j;
+    }
+    db[i] = std::move(curr_pt);
+  }
+
+  // Create a vector of the same size
+  std::vector<uint64_t> vec(coeff_count * num_pt);
+  for (size_t i = 0; i < num_pt; i++) {
+    for (size_t j = 0; j < coeff_count; j++) {
+      vec[i * coeff_count + j] = i * j;
+    }
+  }
+
+  // Read the database and perform a simple operation
+  BENCH_PRINT("Reading the database...");
+  auto db_start_time = CURR_TIME;
+  uint64_t sum = 0;
+  for (size_t i = 0; i < num_pt; i++) {
+    if (db[i].has_value()) {
+      seal::Plaintext &pt = db[i].value();
+      for (size_t j = 0; j < coeff_count; j++) {
+        sum += pt[j];
+      }
+    }
+  }
+  auto db_end_time = CURR_TIME;
+  BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
+
+  // try reading the database again (just in case the first read was not cached)
+  
+  db_start_time = CURR_TIME;
+  sum = 0;
+  for (size_t i = 0; i < num_pt; i++) {
+    if (db[i].has_value()) {
+      seal::Plaintext &pt = db[i].value();
+      for (size_t j = 0; j < coeff_count; j++) {
+        sum += pt[j];
+      }
+    }
+  }
+  db_end_time = CURR_TIME;
+  BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
+
+
+
+
+
+
+  // Perform the same operation on the vector
+  BENCH_PRINT("Performing the same operation on the vector...");
+  auto vec_start_time = CURR_TIME;
+  uint64_t vec_sum = 0;
+  for (size_t i = 0; i < num_pt; i++) {
+    for (size_t j = 0; j < coeff_count; j++) {
+      vec_sum += vec[i * coeff_count + j];
+    }
+  }
+  auto vec_end_time = CURR_TIME;
+  BENCH_PRINT("Vector operation time: " << TIME_DIFF(vec_start_time, vec_end_time) << " ms");
+
+
+
+
+
+
+
+
+
+
+
 }

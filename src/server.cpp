@@ -96,7 +96,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   /*
   I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, each column is
   other_dim_sz many consecutive entries in the database. We are going to
-  multiply the selection_vector with the DB. Then only one row of the result
+  multiply the selection_vector with the DB. Then only one column of the result
   is going to be added to the result vector.
   The high level is summing C_{BFV_k} * DB_{N_1 * j + k}
   */

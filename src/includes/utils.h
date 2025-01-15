@@ -41,6 +41,22 @@ namespace utils {
    stores the result in product_acum.
 */
 inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &product_acum) {
+
+  /*
+  Uncomment these lines to examine the cache performance.
+  We expect these lines to run super fast (almost no computation is required.)
+  The & operations should be much faster than uint128_t multiplication.
+  */
+  
+
+  // volatile uint64_t temp1 = op1 & 0xFFFFFFFF;
+  // volatile uint64_t temp2 = op2 & 0xFFFFFFFF;
+  // volatile uint64_t temp3 = product_acum & 0xFFFFFFFF;
+  // (void)temp1;
+  // (void)temp2;
+  // (void)temp3;
+
+  // The actual computation.
   product_acum = product_acum + static_cast<uint128_t>(op1) * static_cast<uint128_t>(op2);
 }
 
