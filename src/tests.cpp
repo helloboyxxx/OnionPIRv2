@@ -482,6 +482,7 @@ void test_prime_gen() {
 }
 
 
+
 void test_reading_memory() {
     print_func_name(__FUNCTION__);
   // This test generate a super simple plaintext database in coefficient form. Then we
@@ -499,6 +500,8 @@ void test_reading_memory() {
   const auto context = seal::SEALContext(seal_params);
   const size_t coeff_count = seal_params.poly_modulus_degree();
   const size_t coeff_mod_count = context.first_context_data()->parms().coeff_modulus().size();
+  const auto bits_per_coeff = pir_params.get_num_bits_per_coeff();
+  const uint64_t coeff_mask = (uint64_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
 
   std::cout << "num_pt: " << num_pt << std::endl;
   std::cout << "coeff_count: " << coeff_count << std::endl;
@@ -510,17 +513,20 @@ void test_reading_memory() {
   BENCH_PRINT("Generating the database...");
   for (size_t i = 0; i < num_pt; i++) {
     auto curr_pt = seal::Plaintext(coeff_count);
-    for (size_t j = 0; j < coeff_count; j++) {
+    for (size_t j = 0; j < coeff_count * coeff_mod_count; j++) {
       curr_pt[j] = i * j;
     }
     db[i] = std::move(curr_pt);
   }
+  
 
-  // Create a vector of the same size
-  std::vector<uint64_t> vec(coeff_count * num_pt);
+  BENCH_PRINT("Generating the vector...");
+  // Create a vector of the same size on the heap
+  std::vector<uint64_t> vec;
+  vec.reserve(num_pt * coeff_count * coeff_mod_count);
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t j = 0; j < coeff_count; j++) {
-      vec[i * coeff_count + j] = i * j;
+      vec.push_back(i * j);
     }
   }
 
@@ -537,25 +543,8 @@ void test_reading_memory() {
     }
   }
   auto db_end_time = CURR_TIME;
+  BENCH_PRINT("db_sum: " << sum);
   BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
-
-  // try reading the database again (just in case the first read was not cached)
-  
-  db_start_time = CURR_TIME;
-  sum = 0;
-  for (size_t i = 0; i < num_pt; i++) {
-    if (db[i].has_value()) {
-      seal::Plaintext &pt = db[i].value();
-      for (size_t j = 0; j < coeff_count; j++) {
-        sum += pt[j];
-      }
-    }
-  }
-  db_end_time = CURR_TIME;
-  BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
-
-
-
 
 
 
@@ -563,22 +552,12 @@ void test_reading_memory() {
   BENCH_PRINT("Performing the same operation on the vector...");
   auto vec_start_time = CURR_TIME;
   uint64_t vec_sum = 0;
-  for (size_t i = 0; i < num_pt; i++) {
-    for (size_t j = 0; j < coeff_count; j++) {
-      vec_sum += vec[i * coeff_count + j];
-    }
+  for (size_t i = 0; i < vec.size(); i++) {
+    vec_sum += vec[i];
   }
   auto vec_end_time = CURR_TIME;
+  BENCH_PRINT("vec_sum: " << vec_sum);
   BENCH_PRINT("Vector operation time: " << TIME_DIFF(vec_start_time, vec_end_time) << " ms");
-
-
-
-
-
-
-
-
-
 
 
 }
