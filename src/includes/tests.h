@@ -19,4 +19,5 @@ void test_pir();
 
 // Other tests
 void test_prime_gen();
-void test_reading_memory();
+void test_reading_pt();
+void test_reading_ct();

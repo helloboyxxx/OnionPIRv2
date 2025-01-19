@@ -29,13 +29,13 @@ namespace DatabaseConstants {
   // constexpr std::array<size_t, 3> CoeffModulus = { 60, 60, 60 }; // the first two addes up to log q
 
   // ! ========================== 2^15 * 24KB = 768MB (for Mac M1 8GB RAM ˚∆˚) ==========================
-  // constexpr size_t PolyDegree = 4096;
-  // constexpr size_t NumEntries = 1 << 15;            // number of entries in the database
-  // constexpr size_t EntrySize = 0;                   // 0 means calculated automatically. Take the largest possible value.
-  // constexpr size_t GSW_L = 4;                       // parameter for GSW scheme
-  // constexpr size_t GSW_L_KEY = 9;                   // GSW for query expansion
-  // constexpr size_t PlainMod = 49;
-  // constexpr std::array<size_t, 3> CoeffModulus = { 60, 60, 60 }; // the first two addes up to log q
+  constexpr size_t PolyDegree = 4096;
+  constexpr size_t NumEntries = 1 << 15;            // number of entries in the database
+  constexpr size_t EntrySize = 0;                   // 0 means calculated automatically. Take the largest possible value.
+  constexpr size_t GSW_L = 4;                       // parameter for GSW scheme
+  constexpr size_t GSW_L_KEY = 9;                   // GSW for query expansion
+  constexpr size_t PlainMod = 49;
+  constexpr std::array<size_t, 3> CoeffModulus = { 60, 60, 60 }; // the first two addes up to log q
 
   // ! ========================== 2^10 * 24KB = 24MB (quick test) ==========================
   // constexpr size_t PolyDegree = 4096;
@@ -133,13 +133,13 @@ namespace DatabaseConstants {
 
 
   // ! ========================== 2^21 * 256B = 512MB (general small test case when n = 2048) ==========================
-  constexpr size_t PolyDegree = 2048;
-  constexpr size_t NumEntries = 1 << 21;            // number of entries in the database. Will be padded to multiples of other dimension size.
-  constexpr size_t EntrySize = 256;                 // 256B
-  constexpr size_t GSW_L = 5;                       // parameter for GSW scheme
-  constexpr size_t GSW_L_KEY = 20;                  // GSW for query expansion
-  constexpr size_t PlainMod = 17;
-  constexpr std::array<size_t, 2> CoeffModulus = {60, 60}; // log q = 60.
+  // constexpr size_t PolyDegree = 2048;
+  // constexpr size_t NumEntries = 1 << 21;            // number of entries in the database. Will be padded to multiples of other dimension size.
+  // constexpr size_t EntrySize = 256;                 // 256B
+  // constexpr size_t GSW_L = 5;                       // parameter for GSW scheme
+  // constexpr size_t GSW_L_KEY = 20;                  // GSW for query expansion
+  // constexpr size_t PlainMod = 17;
+  // constexpr std::array<size_t, 2> CoeffModulus = {60, 60}; // log q = 60.
 
 
 } // namespace DatabaseConstants

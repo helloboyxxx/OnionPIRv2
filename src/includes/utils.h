@@ -50,14 +50,14 @@ inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &pro
   
 
   // volatile uint64_t temp1 = op1 & 0xFFFFFFFF;
-  // volatile uint64_t temp2 = op2 & 0xFFFFFFFF;
+  volatile uint64_t temp2 = op2 & 0xFFFFFFFF;
   // volatile uint64_t temp3 = product_acum & 0xFFFFFFFF;
   // (void)temp1;
-  // (void)temp2;
+  (void)temp2;
   // (void)temp3;
 
   // The actual computation.
-  product_acum = product_acum + static_cast<uint128_t>(op1) * static_cast<uint128_t>(op2);
+  // product_acum = product_acum + static_cast<uint128_t>(op1) * static_cast<uint128_t>(op2);
 }
 
 /*!

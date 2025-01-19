@@ -9,7 +9,7 @@
 #include <bitset>
 
 
-#define EXPERIMENT_ITERATIONS 10
+#define EXPERIMENT_ITERATIONS 5
 #define WARMUP_ITERATIONS     3
 
 void print_func_name(std::string func_name) {
@@ -34,10 +34,10 @@ void run_tests() {
   // serialization_example();
   // test_plain_to_gsw();
 
-  // test_pir();
+  test_pir();
 
   // test_prime_gen();
-  test_reading_memory();
+  test_reading_pt();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -483,7 +483,7 @@ void test_prime_gen() {
 
 
 
-void test_reading_memory() {
+void test_reading_pt() {
     print_func_name(__FUNCTION__);
   // This test generate a super simple plaintext database in coefficient form. Then we
   // simply try to read all the uint64_t values from the database and perform a
@@ -499,13 +499,13 @@ void test_reading_memory() {
   const auto seal_params = pir_params.get_seal_params();
   const auto context = seal::SEALContext(seal_params);
   const size_t coeff_count = seal_params.poly_modulus_degree();
-  const size_t coeff_mod_count = context.first_context_data()->parms().coeff_modulus().size();
   const auto bits_per_coeff = pir_params.get_num_bits_per_coeff();
   const uint64_t coeff_mask = (uint64_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
+  const size_t storage_MB = num_pt * coeff_count * sizeof(uint64_t) / 1024 / 1024;
 
   std::cout << "num_pt: " << num_pt << std::endl;
   std::cout << "coeff_count: " << coeff_count << std::endl;
-  std::cout << "coeff_mod_count: " << coeff_mod_count << std::endl;
+  std::cout << "storage size in MB: " << storage_MB << std::endl;
 
   // Plaintext database
   Database db = std::make_unique<std::optional<seal::Plaintext>[]>(num_pt);
@@ -513,7 +513,7 @@ void test_reading_memory() {
   BENCH_PRINT("Generating the database...");
   for (size_t i = 0; i < num_pt; i++) {
     auto curr_pt = seal::Plaintext(coeff_count);
-    for (size_t j = 0; j < coeff_count * coeff_mod_count; j++) {
+    for (size_t j = 0; j < coeff_count; j++) {
       curr_pt[j] = i * j;
     }
     db[i] = std::move(curr_pt);
@@ -523,7 +523,7 @@ void test_reading_memory() {
   BENCH_PRINT("Generating the vector...");
   // Create a vector of the same size on the heap
   std::vector<uint64_t> vec;
-  vec.reserve(num_pt * coeff_count * coeff_mod_count);
+  vec.reserve(num_pt * coeff_count);
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t j = 0; j < coeff_count; j++) {
       vec.push_back(i * j);
@@ -534,30 +534,42 @@ void test_reading_memory() {
   BENCH_PRINT("Reading the database...");
   auto db_start_time = CURR_TIME;
   uint64_t sum = 0;
-  for (size_t i = 0; i < num_pt; i++) {
-    if (db[i].has_value()) {
-      seal::Plaintext &pt = db[i].value();
-      for (size_t j = 0; j < coeff_count; j++) {
-        sum += pt[j];
+  for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
+    for (size_t i = 0; i < num_pt; i++) {
+      if (db[i].has_value()) {
+        seal::Plaintext &pt = db[i].value();
+        for (size_t j = 0; j < coeff_count; j++) {
+          sum += pt[j];
+        }
       }
     }
   }
   auto db_end_time = CURR_TIME;
-  BENCH_PRINT("db_sum: " << sum);
-  BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
-
-
 
   // Perform the same operation on the vector
   BENCH_PRINT("Performing the same operation on the vector...");
   auto vec_start_time = CURR_TIME;
   uint64_t vec_sum = 0;
-  for (size_t i = 0; i < vec.size(); i++) {
-    vec_sum += vec[i];
+  for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
+    for (size_t i = 0; i < vec.size(); i++) {
+      vec_sum += vec[i];
+    }
   }
   auto vec_end_time = CURR_TIME;
+  BENCH_PRINT("db_sum: " << sum); // force -O3 optimization to avoid dead code elimination
   BENCH_PRINT("vec_sum: " << vec_sum);
+
+  BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
+  BENCH_PRINT("db throughput: "
+              << (storage_MB /
+                  (static_cast<double>(TIME_DIFF(db_start_time, db_end_time)) /
+                   1000))
+              << " MB/s");
+  
   BENCH_PRINT("Vector operation time: " << TIME_DIFF(vec_start_time, vec_end_time) << " ms");
-
-
+  BENCH_PRINT("vec throughput: "
+              << (storage_MB /
+                  (static_cast<double>(TIME_DIFF(vec_start_time, vec_end_time)) /
+                   1000))
+              << " MB/s");
 }

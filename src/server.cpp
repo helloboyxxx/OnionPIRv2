@@ -101,6 +101,9 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   The high level is summing C_{BFV_k} * DB_{N_1 * j + k}
   */
 
+
+  auto core_start = CURR_TIME;
+
   size_t db_idx = 0;
   for (size_t k_base = 0; k_base < fst_dim_sz; k_base += DatabaseConstants::TileSz) {
     for (size_t j = 0; j < other_dim_sz; ++j) {
@@ -116,6 +119,12 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
       }
     }
   }
+
+
+  auto core_end = CURR_TIME;
+  BENCH_PRINT("\t\tCore time:\t" << TIME_DIFF(core_start, core_end) << "ms");
+
+
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
   std::vector<seal::Ciphertext> result; // output vector
