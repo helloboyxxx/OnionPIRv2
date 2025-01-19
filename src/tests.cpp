@@ -34,10 +34,11 @@ void run_tests() {
   // serialization_example();
   // test_plain_to_gsw();
 
-  test_pir();
+  // test_pir();
 
   // test_prime_gen();
   test_reading_pt();
+  test_reading_ct();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -502,6 +503,7 @@ void test_reading_pt() {
   const auto bits_per_coeff = pir_params.get_num_bits_per_coeff();
   const uint64_t coeff_mask = (uint64_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
   const size_t storage_MB = num_pt * coeff_count * sizeof(uint64_t) / 1024 / 1024;
+  auto evaluator = seal::Evaluator(context);
 
   std::cout << "num_pt: " << num_pt << std::endl;
   std::cout << "coeff_count: " << coeff_count << std::endl;
@@ -514,11 +516,22 @@ void test_reading_pt() {
   for (size_t i = 0; i < num_pt; i++) {
     auto curr_pt = seal::Plaintext(coeff_count);
     for (size_t j = 0; j < coeff_count; j++) {
-      curr_pt[j] = i * j;
+      curr_pt[j] = i * j & coeff_mask;
     }
+    // transform the plaintext to NTT form
+    evaluator.transform_to_ntt_inplace(curr_pt, context.first_parms_id());
+ 
     db[i] = std::move(curr_pt);
   }
-  
+
+
+  // test if the database is indeed in NTT form 
+  if (db[0].has_value() && db[0].value().is_ntt_form()) {
+    BENCH_PRINT("The database is in NTT form");
+  } else {
+    BENCH_PRINT("The database is not in NTT form");
+  }
+
 
   BENCH_PRINT("Generating the vector...");
   // Create a vector of the same size on the heap
@@ -526,7 +539,7 @@ void test_reading_pt() {
   vec.reserve(num_pt * coeff_count);
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t j = 0; j < coeff_count; j++) {
-      vec.push_back(i * j);
+      vec.push_back(i * j & coeff_mask);
     }
   }
 
@@ -573,3 +586,26 @@ void test_reading_pt() {
                    1000))
               << " MB/s");
 }
+
+
+
+void test_reading_ct() {
+  // In this test case, we use the parameters from the PIR scheme to create a
+  // BFV ciphertext query vector. Basically, we need fst_dim_sz many BFV
+  // ciphertexts. In total, we need to read the same vector other_dim_sz many
+  // times. And since there are two polynomials for each BFV ciphertext, we
+  // basically need to read 2 * num_pt many polynomials. For now, lets ignore
+  // the fact that we might also have RNS. We simply use ct that has 60 bits
+  // coeffs.
+
+  print_func_name(__FUNCTION__);
+  BENCH_PRINT("TODO");
+}
+
+
+
+
+
+
+
+
