@@ -72,7 +72,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   const size_t coeff_mod_count = coeff_modulus.size();
   const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * coeff_mod_count; // polydegree * RNS moduli count
   constexpr size_t num_poly = 2;  // ciphertext has two polynomials
-  const size_t one_ct_size = num_poly * coeff_val_cnt;  // 16384
+  const size_t one_ct_size = num_poly * coeff_val_cnt;
 
   // transform the selection vector to ntt form
   for (size_t i = 0; i < fst_dim_query.size(); i++) {
@@ -81,17 +81,6 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
 
   // fill the intermediate result with zeros
   std::fill(inter_res.begin(), inter_res.end(), 0);
-
-  // quick test: put fst_dim_query data together in a single long vector
-  std::vector<uint64_t> fst_dim_data(fst_dim_sz * one_ct_size);
-  for (size_t k = 0; k < fst_dim_sz; k++) {
-    for (size_t poly_id = 0; poly_id < num_poly; poly_id++) {
-      auto shift = k * one_ct_size + poly_id * coeff_val_cnt;
-      std::copy(fst_dim_query[k].data(poly_id),
-                fst_dim_query[k].data(poly_id) + coeff_val_cnt,
-                fst_dim_data.begin() + shift);
-    }
-  }
 
   /*
   I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, each column is
@@ -109,10 +98,10 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
     for (size_t j = 0; j < other_dim_sz; ++j) {
       for (size_t k = k_base; k < std::min(k_base + DatabaseConstants::TileSz, fst_dim_sz); k++) {
         utils::multiply_poly_acum( // poly_id = 0
-            fst_dim_data.data() + (k * one_ct_size), (*db_[db_idx]).data(),
+            fst_dim_query[k].data(0), (*db_[db_idx]).data(),
             coeff_val_cnt, &inter_res[j * one_ct_size]);
         utils::multiply_poly_acum( // poly_id = 1
-            fst_dim_data.data() + (k * one_ct_size + coeff_val_cnt),
+            fst_dim_query[k].data(1),
             (*db_[db_idx]).data(), coeff_val_cnt,
             &inter_res[j * one_ct_size + coeff_val_cnt]);
         db_idx++;

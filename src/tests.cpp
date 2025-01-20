@@ -9,8 +9,8 @@
 #include <bitset>
 
 
-#define EXPERIMENT_ITERATIONS 5
-#define WARMUP_ITERATIONS     3
+#define EXPERIMENT_ITERATIONS 3
+#define WARMUP_ITERATIONS     0
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG
@@ -34,11 +34,11 @@ void run_tests() {
   // serialization_example();
   // test_plain_to_gsw();
 
-  // test_pir();
+  test_pir();
 
   // test_prime_gen();
-  test_reading_pt();
-  test_reading_ct();
+  // test_reading_pt();
+  // test_reading_ct();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -546,13 +546,13 @@ void test_reading_pt() {
   // Read the database and perform a simple operation
   BENCH_PRINT("Reading the database...");
   auto db_start_time = CURR_TIME;
-  uint64_t sum = 0;
-  for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
-    for (size_t i = 0; i < num_pt; i++) {
+  for (size_t i = 0; i < num_pt; i++) {
+    for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
       if (db[i].has_value()) {
         seal::Plaintext &pt = db[i].value();
+        #pragma GCC unroll 32
         for (size_t j = 0; j < coeff_count; j++) {
-          sum += pt[j];
+          asm volatile("" : : "r"(pt[j]) : "memory");
         }
       }
     }
@@ -562,26 +562,27 @@ void test_reading_pt() {
   // Perform the same operation on the vector
   BENCH_PRINT("Performing the same operation on the vector...");
   auto vec_start_time = CURR_TIME;
-  uint64_t vec_sum = 0;
-  for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
-    for (size_t i = 0; i < vec.size(); i++) {
-      vec_sum += vec[i];
+  for (size_t i = 0; i < num_pt; i++) {
+    for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
+      #pragma GCC unroll 32
+      for (size_t j = 0; j < coeff_count; j++) {
+        asm volatile("" : : "r"(vec[i * coeff_count + j]) : "memory");
+      }
     }
   }
   auto vec_end_time = CURR_TIME;
-  BENCH_PRINT("db_sum: " << sum); // force -O3 optimization to avoid dead code elimination
-  BENCH_PRINT("vec_sum: " << vec_sum);
+
 
   BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
   BENCH_PRINT("db throughput: "
-              << (storage_MB /
+              << (2.0 * storage_MB /
                   (static_cast<double>(TIME_DIFF(db_start_time, db_end_time)) /
                    1000))
               << " MB/s");
   
   BENCH_PRINT("Vector operation time: " << TIME_DIFF(vec_start_time, vec_end_time) << " ms");
   BENCH_PRINT("vec throughput: "
-              << (storage_MB /
+              << (2.0 * storage_MB /
                   (static_cast<double>(TIME_DIFF(vec_start_time, vec_end_time)) /
                    1000))
               << " MB/s");
@@ -599,7 +600,98 @@ void test_reading_ct() {
   // coeffs.
 
   print_func_name(__FUNCTION__);
-  BENCH_PRINT("TODO");
+  PirParams pir_params;
+  auto parms = pir_params.get_seal_params();    // This parameter is set to be: seal::scheme_type::bfv
+  auto context_ = seal::SEALContext(parms);
+  auto evaluator_ = seal::Evaluator(context_);
+  auto keygen_ = seal::KeyGenerator(context_);
+  auto secret_key_ = keygen_.secret_key();
+  auto encryptor_ = new seal::Encryptor(context_, secret_key_);
+  auto decryptor_ = new seal::Decryptor(context_, secret_key_);
+  const size_t fst_dim_sz = pir_params.get_fst_dim_sz();
+  const size_t other_dim_sz = pir_params.get_other_dim_sz();
+  const auto coeff_modulus = context_.first_context_data()->parms().coeff_modulus();
+  const size_t coeff_mod_count = coeff_modulus.size();
+  const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * coeff_mod_count; // polydegree * RNS moduli count
+  const size_t one_ct_size = 2 * coeff_val_cnt; // 2 polynomials
+
+  BENCH_PRINT("fst_dim_sz: " << fst_dim_sz << ", other_dim_sz: " << other_dim_sz << ", coeff_val_cnt: " << coeff_val_cnt);
+  BENCH_PRINT("uint64_t accessed: " << 2 * fst_dim_sz * other_dim_sz * coeff_val_cnt);
+
+
+  // create a vector of BFV of zeros. vector size = fst_dim_sz. Then transform to NTT form.
+  std::vector<seal::Ciphertext> ct_vec(fst_dim_sz);
+  for (size_t i = 0; i < fst_dim_sz; i++) {
+    encryptor_->encrypt_zero_symmetric(ct_vec[i]);
+    evaluator_.transform_to_ntt_inplace(ct_vec[i]);
+  }
+
+
+
+  // ================== Normal Matrix vector multiplication order ==================
+  auto normal_start = CURR_TIME;
+  for (size_t i = 0; i < other_dim_sz; i++) {
+    for (size_t j = 0; j < fst_dim_sz; j++) {
+      for (size_t k = 0; k < 2; k++) {
+        #pragma GCC unroll 32
+        for (size_t coeff_id = 0; coeff_id < coeff_val_cnt; coeff_id++) {
+          asm volatile("" : : "r"(ct_vec[j].data(k)[coeff_id]) : "memory");
+        }
+      }
+    }
+  }
+  auto normal_end = CURR_TIME;
+  BENCH_PRINT("Normal time: " << TIME_DIFF(normal_start, normal_end) << " ms");
+
+
+  /// ================== With Tiling ==================
+  auto tiling_start = CURR_TIME;
+  // const size_t tile_size = DatabaseConstants::TileSz;
+  const size_t tile_size = 32;
+  for (size_t k_base = 0; k_base < fst_dim_sz; k_base += tile_size) {
+    for (size_t j = 0; j < other_dim_sz; ++j) {
+      for (size_t k = k_base; k < std::min(k_base + tile_size,fst_dim_sz); ++k) {
+        for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
+          #pragma GCC unroll 32
+          for (size_t coeff_id = 0; coeff_id < coeff_val_cnt; ++coeff_id) {
+            asm volatile("" : : "r"(ct_vec[k].data(poly_id)[coeff_id]) : "memory");
+          }
+        }
+      }
+    }
+  }
+  auto tiling_end = CURR_TIME;
+  BENCH_PRINT("Tiling time: " << TIME_DIFF(tiling_start, tiling_end) << " ms");
+
+
+  // ================== with fst_dim_data rearranged and tiling ==================
+  std::vector<uint64_t> fst_dim_data(fst_dim_sz * one_ct_size);
+  for (size_t k = 0; k < fst_dim_sz; k++) {
+    for (size_t poly_id = 0; poly_id < 2; poly_id++) {
+      auto shift = k * one_ct_size + poly_id * coeff_val_cnt;
+      std::copy(ct_vec[k].data(poly_id),
+                ct_vec[k].data(poly_id) + coeff_val_cnt,
+                fst_dim_data.begin() + shift);
+    }
+  }
+
+
+  auto tiling_rearrange_start = CURR_TIME;
+  for (size_t k_base = 0; k_base < fst_dim_sz; k_base += tile_size) {
+    for (size_t j = 0; j < other_dim_sz; ++j) {
+      for (size_t k = k_base; k < std::min(k_base + tile_size,fst_dim_sz); ++k) {
+        for (size_t poly_id = 0; poly_id < 2; poly_id++) {
+          #pragma GCC unroll 32
+          for (size_t coeff_id = 0; coeff_id < coeff_val_cnt; coeff_id++) {
+            asm volatile("" : : "r"(fst_dim_data[k * one_ct_size + poly_id * coeff_val_cnt + coeff_id]) : "memory");
+          }
+        }
+      }
+    }
+  }
+  auto tiling_rearrange_end = CURR_TIME;
+  BENCH_PRINT("Tiling and Rearrange time: " << TIME_DIFF(tiling_rearrange_start, tiling_rearrange_end) << " ms");
+
 }
 
 
