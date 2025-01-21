@@ -512,10 +512,9 @@ void PirServer::fill_inter_res() {
   // We need to store 1/dim[0] many ciphertexts in the intermediate result.
   // However, in the first dimension, we want to store them in uint128_t.
   // So, we need to calculate the number of uint128_t we need to store.
-
-  auto seal_params = pir_params_.get_seal_params();
   // number of rns modulus
-  auto num_mods = seal_params.coeff_modulus().size();
+  auto num_mods = pir_params_.get_ct_coeff_mod_cnt();
+  BENCH_PRINT("Number of RNS moduli: " << num_mods);
   // number of coefficients in a ciphertext
   auto coeff_count = DatabaseConstants::PolyDegree * num_mods * 2;  // 2 for two polynomials
   auto other_dim_sz = pir_params_.get_other_dim_sz();

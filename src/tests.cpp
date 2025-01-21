@@ -8,8 +8,10 @@
 #include <iostream>
 #include <bitset>
 
+#include <set>
 
-#define EXPERIMENT_ITERATIONS 3
+
+#define EXPERIMENT_ITERATIONS 1
 #define WARMUP_ITERATIONS     0
 
 void print_func_name(std::string func_name) {
@@ -39,6 +41,7 @@ void run_tests() {
   // test_prime_gen();
   // test_reading_pt();
   // test_reading_ct();
+  test_reading_inter();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -511,6 +514,7 @@ void test_reading_pt() {
 
   // Plaintext database
   Database db = std::make_unique<std::optional<seal::Plaintext>[]>(num_pt);
+  // initialize the database with reserved Plaintexts
 
   BENCH_PRINT("Generating the database...");
   for (size_t i = 0; i < num_pt; i++) {
@@ -520,20 +524,10 @@ void test_reading_pt() {
     }
     // transform the plaintext to NTT form
     evaluator.transform_to_ntt_inplace(curr_pt, context.first_parms_id());
- 
     db[i] = std::move(curr_pt);
   }
 
 
-  // test if the database is indeed in NTT form 
-  if (db[0].has_value() && db[0].value().is_ntt_form()) {
-    BENCH_PRINT("The database is in NTT form");
-  } else {
-    BENCH_PRINT("The database is not in NTT form");
-  }
-
-
-  BENCH_PRINT("Generating the vector...");
   // Create a vector of the same size on the heap
   std::vector<uint64_t> vec;
   vec.reserve(num_pt * coeff_count);
@@ -544,23 +538,19 @@ void test_reading_pt() {
   }
 
   // Read the database and perform a simple operation
-  BENCH_PRINT("Reading the database...");
   auto db_start_time = CURR_TIME;
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
-      if (db[i].has_value()) {
-        seal::Plaintext &pt = db[i].value();
-        #pragma GCC unroll 32
-        for (size_t j = 0; j < coeff_count; j++) {
-          asm volatile("" : : "r"(pt[j]) : "memory");
-        }
+      seal::Plaintext &pt = db[i].value();
+      #pragma GCC unroll 32
+      for (size_t j = 0; j < coeff_count; j++) {
+        asm volatile("" : : "r"(pt[j]) : "memory");
       }
     }
   }
   auto db_end_time = CURR_TIME;
 
   // Perform the same operation on the vector
-  BENCH_PRINT("Performing the same operation on the vector...");
   auto vec_start_time = CURR_TIME;
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
@@ -572,20 +562,21 @@ void test_reading_pt() {
   }
   auto vec_end_time = CURR_TIME;
 
+  BENCH_PRINT(
+      "Database read time: "
+      << TIME_DIFF(db_start_time, db_end_time) << " ms. Throughput: "
+      << (2.0 * storage_MB /
+          (static_cast<double>(TIME_DIFF(db_start_time, db_end_time)) / 1000))
+      << " MB/s"
 
-  BENCH_PRINT("Database read time: " << TIME_DIFF(db_start_time, db_end_time) << " ms");
-  BENCH_PRINT("db throughput: "
-              << (2.0 * storage_MB /
-                  (static_cast<double>(TIME_DIFF(db_start_time, db_end_time)) /
-                   1000))
-              << " MB/s");
-  
-  BENCH_PRINT("Vector operation time: " << TIME_DIFF(vec_start_time, vec_end_time) << " ms");
-  BENCH_PRINT("vec throughput: "
-              << (2.0 * storage_MB /
-                  (static_cast<double>(TIME_DIFF(vec_start_time, vec_end_time)) /
-                   1000))
-              << " MB/s");
+  );
+
+  BENCH_PRINT(
+      "Vector operation time: "
+      << TIME_DIFF(vec_start_time, vec_end_time) << " ms. Throughput: "
+      << (2.0 * storage_MB /
+          (static_cast<double>(TIME_DIFF(vec_start_time, vec_end_time)) / 1000))
+      << " MB/s");
 }
 
 
@@ -697,7 +688,9 @@ void test_reading_ct() {
 
 
 
+void test_reading_inter() {
 
+}
 
 
 

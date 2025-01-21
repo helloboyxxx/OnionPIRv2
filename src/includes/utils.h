@@ -44,14 +44,14 @@ namespace utils {
 inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &product_acum) {
 
   /*
-  Uncomment these lines to examine the cache performance.
-  We expect these lines to run super fast (almost no computation is required.)
-  The & operations should be much faster than uint128_t multiplication.
+  Uncomment these lines to examine the reading performance.
+  This shows that the bottle neck is the memory access.
+  The memory reading takes about 85% of the actual computation.
   */
 
-  asm volatile("" : : "r"(op1) : "memory");
+  // asm volatile("" : : "r"(op1) : "memory");
   asm volatile("" : : "r"(op2) : "memory");
-  asm volatile("" : : "r"(product_acum) : "memory");
+  // asm volatile("" : : "r"(product_acum) : "memory");
   
   // The actual computation.
   // product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
@@ -67,8 +67,6 @@ inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &pro
 */
 inline void multiply_poly_acum(const uint64_t *ct_ptr, const uint64_t *pt_ptr, const size_t size,
                                uint128_t *result) {
-    const size_t PREFETCH_DISTANCE = 64; // Adjust this value based on hardware cache size and latency
-    
     #pragma GCC unroll 32
     for (size_t cc = 0; cc < size; cc++) {
         // Perform the actual computation

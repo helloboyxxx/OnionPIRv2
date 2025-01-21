@@ -63,6 +63,7 @@ public:
   // In terms of number of plaintexts
   // when other_dim_sz == 1, it means we only use the first dimension.
   inline size_t get_other_dim_sz() const { return num_pt_ / dims_[0]; }
+  inline size_t get_ct_coeff_mod_cnt() const { return seal_params_.coeff_modulus().size() - 1; }
 
   void print_params() const;
 
