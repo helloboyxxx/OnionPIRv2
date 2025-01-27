@@ -11,8 +11,8 @@
 #include <set>
 
 
-#define EXPERIMENT_ITERATIONS 1
-#define WARMUP_ITERATIONS     0
+#define EXPERIMENT_ITERATIONS 5
+#define WARMUP_ITERATIONS     3
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG
@@ -36,12 +36,12 @@ void run_tests() {
   // serialization_example();
   // test_plain_to_gsw();
 
-  test_pir();
+  // test_pir();
 
   // test_prime_gen();
-  // test_reading_pt();
+  test_reading_pt();
   // test_reading_ct();
-  test_reading_inter();
+  // test_reading_inter();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -407,8 +407,7 @@ void test_pir() {
     // Client start generating query
     size_t entry_index = rand() % pir_params.get_num_entries();
     BENCH_PRINT("Experiment [" << i+1 << "]");
-    DEBUG_PRINT("\t\tClient ID:\t" << client_id);
-    DEBUG_PRINT("\t\tEntry index:\t" << entry_index);
+    BENCH_PRINT("\t\tEntry index:\t" << entry_index);
 
     // ============= CLIENT ===============
     auto c_start_time = CURR_TIME;  // client start time for the query
@@ -439,7 +438,7 @@ void test_pir() {
     uint64_t actual_entry_idx = get_entry_idx(actual_entry);
 
     // ============= PRINTING RESULTS ===============    
-    BENCH_PRINT("\t\tActual Entry Index:\t" << actual_entry_idx);
+    BENCH_PRINT("\t\tActual Index:\t" << actual_entry_idx);
     BENCH_PRINT("\t\tServer time:\t" << TIME_DIFF(s_start_time, s_end_time) << " ms");
     BENCH_PRINT("\t\tClient Time:\t" << TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time) << " ms"); 
     BENCH_PRINT("\t\tNoise budget:\t" << client.get_decryptor()->invariant_noise_budget(result[0]));
@@ -562,6 +561,19 @@ void test_reading_pt() {
   }
   auto vec_end_time = CURR_TIME;
 
+
+  auto vec_simple_start = CURR_TIME;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    asm volatile("" : : "r"(vec[i]) : "memory");
+  }
+  for (size_t i = 0; i < vec.size(); ++i) {
+    asm volatile("" : : "r"(vec[i]) : "memory");
+  }
+  auto vec_simple_end = CURR_TIME;
+
+
+
+
   BENCH_PRINT(
       "Database read time: "
       << TIME_DIFF(db_start_time, db_end_time) << " ms. Throughput: "
@@ -576,6 +588,14 @@ void test_reading_pt() {
       << TIME_DIFF(vec_start_time, vec_end_time) << " ms. Throughput: "
       << (2.0 * storage_MB /
           (static_cast<double>(TIME_DIFF(vec_start_time, vec_end_time)) / 1000))
+      << " MB/s");
+
+
+  BENCH_PRINT(
+      "Vector simple time: "
+      << TIME_DIFF(vec_simple_start, vec_simple_end) << " ms. Throughput: "
+      << (2.0 * storage_MB /
+          (static_cast<double>(TIME_DIFF(vec_simple_start, vec_simple_end)) / 1000))
       << " MB/s");
 }
 
@@ -657,6 +677,7 @@ void test_reading_ct() {
 
   // ================== with fst_dim_data rearranged and tiling ==================
   std::vector<uint64_t> fst_dim_data(fst_dim_sz * one_ct_size);
+
   for (size_t k = 0; k < fst_dim_sz; k++) {
     for (size_t poly_id = 0; poly_id < 2; poly_id++) {
       auto shift = k * one_ct_size + poly_id * coeff_val_cnt;

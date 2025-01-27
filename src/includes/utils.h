@@ -37,6 +37,15 @@ template <typename T> std::string to_string(T x) {
 }
 
 namespace utils {
+
+  // global sum for testing
+extern uint64_t global_sum;
+
+void print_sum();
+
+
+
+
 /*!
     Helper function for multiply_poly_acum. Multiplies two operands together and
    stores the result in product_acum.
@@ -49,12 +58,14 @@ inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &pro
   The memory reading takes about 85% of the actual computation.
   */
 
-  // asm volatile("" : : "r"(op1) : "memory");
-  asm volatile("" : : "r"(op2) : "memory");
-  // asm volatile("" : : "r"(product_acum) : "memory");
+  // asm volatile("" : : "r"(op1) : "memory");  // ct
+  // asm volatile("" : : "r"(op2) : "memory"); // pt
+  // asm volatile("" : : "r"(product_acum) : "memory"); // intermediate result
+
+  // global_sum += op2;  // pt
   
   // The actual computation.
-  // product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
+  product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
 }
 
 /*!

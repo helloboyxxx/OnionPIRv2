@@ -109,6 +109,8 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
     }
   }
 
+  utils::print_sum();
+
 
   auto core_end = CURR_TIME;
   BENCH_PRINT("\t\tCore time:\t" << TIME_DIFF(core_start, core_end) << "ms");

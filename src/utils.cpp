@@ -238,3 +238,13 @@ size_t roundup_div(const size_t numerator, const size_t denominator) {
   }
   return (numerator + denominator - 1) / denominator;
 }
+
+
+
+
+
+// temp test
+uint64_t utils::global_sum = 0; // Definition and initialization
+void utils::print_sum() {
+  std::cout << "global_sum: " << utils::global_sum << std::endl;
+}
