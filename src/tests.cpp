@@ -8,11 +8,10 @@
 #include <iostream>
 #include <bitset>
 
-#include <set>
 
 
-#define EXPERIMENT_ITERATIONS 5
-#define WARMUP_ITERATIONS     3
+#define EXPERIMENT_ITERATIONS 1
+#define WARMUP_ITERATIONS     0
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG
@@ -36,12 +35,13 @@ void run_tests() {
   // serialization_example();
   // test_plain_to_gsw();
 
-  // test_pir();
+  test_pir();
 
   // test_prime_gen();
   test_reading_pt();
-  // test_reading_ct();
+  test_reading_ct();
   // test_reading_inter();
+  test_matrix_mult();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -562,17 +562,27 @@ void test_reading_pt() {
   auto vec_end_time = CURR_TIME;
 
 
+  // simple tile
+  uint64_t *p = vec.data();
+  uint64_t *end = p + vec.size();
+  const size_t tile_size = 4096;
+
   auto vec_simple_start = CURR_TIME;
-  for (size_t i = 0; i < vec.size(); ++i) {
-    asm volatile("" : : "r"(vec[i]) : "memory");
-  }
-  for (size_t i = 0; i < vec.size(); ++i) {
-    asm volatile("" : : "r"(vec[i]) : "memory");
+  while (p < end)
+  {
+      #pragma GCC unroll 32
+      for (size_t i = 0; i < tile_size; i++)
+      {
+          asm volatile("" : : "r"(p[i]) : "memory");
+      }
+      #pragma GCC unroll 32
+      for (size_t i = 0; i < tile_size; i++)
+      {
+          asm volatile("" : : "r"(p[i]) : "memory");
+      }
+      p += tile_size;
   }
   auto vec_simple_end = CURR_TIME;
-
-
-
 
   BENCH_PRINT(
       "Database read time: "
@@ -714,4 +724,75 @@ void test_reading_inter() {
 }
 
 
+void test_matrix_mult () {
+  print_func_name(__FUNCTION__);
 
+  PirParams pir_params;
+  const size_t num_pt = pir_params.get_num_pt();
+  const auto seal_params = pir_params.get_seal_params();
+  const size_t coeff_count = seal_params.poly_modulus_degree();
+
+
+  // Create a random generator
+  // (Seed with a fixed value or std::random_device{}() for more variability)
+  std::mt19937_64 rng(12345ULL);
+
+  // Distribution for the matrix entries: all possible uint64_t
+  std::uniform_int_distribution<uint64_t> dist_matrix(
+      0ULL, std::numeric_limits<uint64_t>::max()
+  );
+
+  // Distribution for the vector entries: only 0 or 1
+  std::uniform_int_distribution<uint64_t> dist_vector(0ULL, 1ULL);
+
+  // Allocate and fill the matrix (coeff_count rows, each row has num_pt columns)
+  std::vector<std::vector<uint64_t>> matrix(coeff_count, std::vector<uint64_t>(num_pt));
+  for (size_t i = 0; i < coeff_count; i++)
+  {
+      for (size_t j = 0; j < num_pt; j++)
+      {
+          matrix[i][j] = dist_matrix(rng);
+      }
+  }
+
+  // Allocate and fill the vector (length = num_pt) with 0s or 1s
+  std::vector<uint64_t> vec(num_pt);
+  for (size_t j = 0; j < num_pt; j++)
+  {
+      vec[j] = dist_vector(rng);
+  }
+
+  // Prepare a result vector (length = coeff_count)
+  std::vector<uint64_t> result(coeff_count, 0ULL);
+
+
+  auto matrix_mult_start = CURR_TIME;
+  // --- Matrix-vector multiplication ---
+  // result[i] = sum_{j=0}^{num_pt-1} matrix[i][j] * vec[j]
+  for (size_t i = 0; i < coeff_count; i++)
+  {
+      uint64_t sum = 0ULL;
+      for (size_t j = 0; j < num_pt; j++)
+      {
+          // In 64-bit, watch out for potential overflow if matrix entries are very large,
+          // but standard unsigned 64-bit wrap-around rules will apply
+          sum += matrix[i][j] * vec[j];
+      }
+      result[i] = sum;
+  }
+  auto matrix_mult_end = CURR_TIME; 
+
+  BENCH_PRINT("Matrix-vector multiplication time: " << TIME_DIFF(matrix_mult_start, matrix_mult_end) << " ms");
+
+
+  // sum the result to force reading the result
+  uint64_t tot = 0;
+  for (size_t i = 0; i < coeff_count; i++) {
+    tot += result[i];
+  }
+
+  // print the total
+  BENCH_PRINT("Total: " << tot);
+
+
+}

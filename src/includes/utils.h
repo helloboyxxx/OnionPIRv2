@@ -58,14 +58,14 @@ inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &pro
   The memory reading takes about 85% of the actual computation.
   */
 
-  // asm volatile("" : : "r"(op1) : "memory");  // ct
-  // asm volatile("" : : "r"(op2) : "memory"); // pt
-  // asm volatile("" : : "r"(product_acum) : "memory"); // intermediate result
+  asm volatile("" : : "m"(op1) : "memory");  // ct
+  asm volatile("" : : "m"(op2) : "memory"); // pt
+  asm volatile("" : : "m"(product_acum) : "memory"); // intermediate result
 
   // global_sum += op2;  // pt
   
   // The actual computation.
-  product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
+  // product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
 }
 
 /*!
