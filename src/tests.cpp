@@ -38,10 +38,11 @@ void run_tests() {
   test_pir();
 
   // test_prime_gen();
-  test_reading_pt();
-  test_reading_ct();
+  // test_reading_pt();
+  // test_reading_ct();
   // test_reading_inter();
-  test_matrix_mult();
+  // test_matrix_mult();
+  test_pt_size();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -407,7 +408,6 @@ void test_pir() {
     // Client start generating query
     size_t entry_index = rand() % pir_params.get_num_entries();
     BENCH_PRINT("Experiment [" << i+1 << "]");
-    BENCH_PRINT("\t\tEntry index:\t" << entry_index);
 
     // ============= CLIENT ===============
     auto c_start_time = CURR_TIME;  // client start time for the query
@@ -438,7 +438,7 @@ void test_pir() {
     uint64_t actual_entry_idx = get_entry_idx(actual_entry);
 
     // ============= PRINTING RESULTS ===============    
-    BENCH_PRINT("\t\tActual Index:\t" << actual_entry_idx);
+    BENCH_PRINT("\t\tQuery/actual idx:\t" << entry_index << " / " << actual_entry_idx);
     BENCH_PRINT("\t\tServer time:\t" << TIME_DIFF(s_start_time, s_end_time) << " ms");
     BENCH_PRINT("\t\tClient Time:\t" << TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time) << " ms"); 
     BENCH_PRINT("\t\tNoise budget:\t" << client.get_decryptor()->invariant_noise_budget(result[0]));
@@ -634,7 +634,7 @@ void test_reading_ct() {
   const auto coeff_modulus = context_.first_context_data()->parms().coeff_modulus();
   const size_t coeff_mod_count = coeff_modulus.size();
   const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * coeff_mod_count; // polydegree * RNS moduli count
-  const size_t one_ct_size = 2 * coeff_val_cnt; // 2 polynomials
+  const size_t one_ct_sz = 2 * coeff_val_cnt; // 2 polynomials
 
   BENCH_PRINT("fst_dim_sz: " << fst_dim_sz << ", other_dim_sz: " << other_dim_sz << ", coeff_val_cnt: " << coeff_val_cnt);
   BENCH_PRINT("uint64_t accessed: " << 2 * fst_dim_sz * other_dim_sz * coeff_val_cnt);
@@ -686,11 +686,11 @@ void test_reading_ct() {
 
 
   // ================== with fst_dim_data rearranged and tiling ==================
-  std::vector<uint64_t> fst_dim_data(fst_dim_sz * one_ct_size);
+  std::vector<uint64_t> fst_dim_data(fst_dim_sz * one_ct_sz);
 
   for (size_t k = 0; k < fst_dim_sz; k++) {
     for (size_t poly_id = 0; poly_id < 2; poly_id++) {
-      auto shift = k * one_ct_size + poly_id * coeff_val_cnt;
+      auto shift = k * one_ct_sz + poly_id * coeff_val_cnt;
       std::copy(ct_vec[k].data(poly_id),
                 ct_vec[k].data(poly_id) + coeff_val_cnt,
                 fst_dim_data.begin() + shift);
@@ -705,7 +705,7 @@ void test_reading_ct() {
         for (size_t poly_id = 0; poly_id < 2; poly_id++) {
           #pragma GCC unroll 32
           for (size_t coeff_id = 0; coeff_id < coeff_val_cnt; coeff_id++) {
-            asm volatile("" : : "r"(fst_dim_data[k * one_ct_size + poly_id * coeff_val_cnt + coeff_id]) : "memory");
+            asm volatile("" : : "r"(fst_dim_data[k * one_ct_sz + poly_id * coeff_val_cnt + coeff_id]) : "memory");
           }
         }
       }
@@ -794,5 +794,37 @@ void test_matrix_mult () {
   // print the total
   BENCH_PRINT("Total: " << tot);
 
+
+}
+
+
+void test_pt_size() {
+  print_func_name(__FUNCTION__);
+
+
+  // Setup PIR param for convenience
+  PirParams pir_params;
+  const size_t num_pt = pir_params.get_num_pt();
+  const auto seal_params = pir_params.get_seal_params();
+  const auto context = seal::SEALContext(seal_params);
+  auto evaluator = seal::Evaluator(context);
+
+
+  auto pt = seal::Plaintext(DatabaseConstants::PolyDegree);
+  for (size_t i = 0; i < DatabaseConstants::PolyDegree; i++) {
+    pt[i] = i;
+  }
+  evaluator.transform_to_ntt_inplace(pt, context.first_parms_id());
+  DEBUG_PRINT("pt ntt form should contain coeff_count * coeff_mod_count many uint64_t values");
+  DEBUG_PRINT("This is why we can multiply a ciphertext with a plaintext easily");
+  DEBUG_PRINT(pt[0]);
+  DEBUG_PRINT(pt[DatabaseConstants::PolyDegree - 1]);
+  DEBUG_PRINT(pt[DatabaseConstants::PolyDegree]);
+  DEBUG_PRINT(pt[2 * DatabaseConstants::PolyDegree - 1]);
+  try {
+    DEBUG_PRINT(pt[2 * DatabaseConstants::PolyDegree]);
+  } catch (const std::exception &e) {
+    DEBUG_PRINT("Out of bound access");
+  }
 
 }

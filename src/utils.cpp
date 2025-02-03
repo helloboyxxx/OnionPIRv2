@@ -40,11 +40,6 @@ void utils::shift_polynomial(seal::EncryptionParameters &params, seal::Ciphertex
 }
 
 
-void negate_poly_inplace(seal::Plaintext &plain) {
-  std::cout << "TODO" << std::endl;
-}
-
-
 std::string uint128_to_string(uint128_t value) {
     // Split the 128-bit value into two 64-bit parts
     uint64_t high = value >> 64;
@@ -197,17 +192,23 @@ size_t poly_idx_to_actual(const size_t poly_idx, const size_t fst_dim_sz, const 
 }
 
 void print_progress(size_t current, size_t total) {
-  float progress = static_cast<float>(current) / total;
-  int bar_width = 70;
-  std::cout << "[";
-  int pos = static_cast<int>(bar_width * progress);
-  for (int i = 0; i < bar_width; ++i) {
-      if (i < pos) std::cout << "=";
-      else if (i == pos) std::cout << ">";
-      else std::cout << " ";
-  }
-  std::cout << "] " << int(progress * 100.0) << " %\r";
-  std::cout.flush();
+    float progress = static_cast<float>(current) / total;
+    int bar_width = 70;
+
+    // Move the cursor to the beginning and clear the line.
+    std::cout << "\r\033[K[";
+
+    int pos = static_cast<int>(bar_width * progress);
+    for (int i = 0; i < bar_width; ++i) {
+        if (i < pos)
+            std::cout << "=";
+        else if (i == pos)
+            std::cout << ">";
+        else
+            std::cout << " ";
+    }
+    std::cout << "] " << int(progress * 100.0) << " %";
+    std::cout.flush();
 }
 
 
@@ -237,14 +238,4 @@ size_t roundup_div(const size_t numerator, const size_t denominator) {
     throw std::invalid_argument("roundup_div division by zero");
   }
   return (numerator + denominator - 1) / denominator;
-}
-
-
-
-
-
-// temp test
-uint64_t utils::global_sum = 0; // Definition and initialization
-void utils::print_sum() {
-  std::cout << "global_sum: " << utils::global_sum << std::endl;
 }

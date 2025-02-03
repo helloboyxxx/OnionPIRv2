@@ -38,14 +38,6 @@ template <typename T> std::string to_string(T x) {
 
 namespace utils {
 
-  // global sum for testing
-extern uint64_t global_sum;
-
-void print_sum();
-
-
-
-
 /*!
     Helper function for multiply_poly_acum. Multiplies two operands together and
    stores the result in product_acum.
@@ -58,14 +50,14 @@ inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &pro
   The memory reading takes about 85% of the actual computation.
   */
 
-  asm volatile("" : : "m"(op1) : "memory");  // ct
-  asm volatile("" : : "m"(op2) : "memory"); // pt
-  asm volatile("" : : "m"(product_acum) : "memory"); // intermediate result
+  // asm volatile("" : : "m"(op1) : "memory");  // ct
+  // asm volatile("" : : "m"(op2) : "memory"); // pt
+  // asm volatile("" : : "m"(product_acum) : "memory"); // intermediate result
 
   // global_sum += op2;  // pt
   
   // The actual computation.
-  // product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
+  product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
 }
 
 /*!
@@ -94,10 +86,6 @@ void negacyclic_shift_poly_coeffmod(seal::util::ConstCoeffIter poly, size_t coef
 void shift_polynomial(seal::EncryptionParameters &params, seal::Ciphertext &encrypted,
                       seal::Ciphertext &destination, size_t index);
 } // namespace utils
-
-
-// Inplace calculate the additive inverse of a seal::Plaintext
-void negate_poly_inplace(seal::Plaintext &plain);
 
 // Convert a 128-bit unsigned integer to a string
 std::string uint128_to_string(uint128_t value);

@@ -55,7 +55,7 @@ void PirServer::gen_data() {
   }
   random_file.close();
   // transform the ntt_db_ from coefficient form to ntt form. db_ is not transformed.
-  BENCH_PRINT("Transforming the database to NTT form...");
+  BENCH_PRINT("\nTransforming the database to NTT form...");
   preprocess_ntt();
 }
 
@@ -71,8 +71,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   const auto coeff_modulus = seal_params.coeff_modulus();
   const size_t coeff_mod_count = coeff_modulus.size();
   const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * coeff_mod_count; // polydegree * RNS moduli count
-  constexpr size_t num_poly = 2;  // ciphertext has two polynomials
-  const size_t one_ct_size = num_poly * coeff_val_cnt;
+  const size_t one_ct_sz = 2 * coeff_val_cnt; // Ciphertext has two polynomials
 
   // transform the selection vector to ntt form
   for (size_t i = 0; i < fst_dim_query.size(); i++) {
@@ -99,18 +98,15 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
       for (size_t k = k_base; k < std::min(k_base + DatabaseConstants::TileSz, fst_dim_sz); k++) {
         utils::multiply_poly_acum( // poly_id = 0
             fst_dim_query[k].data(0), (*db_[db_idx]).data(),
-            coeff_val_cnt, &inter_res[j * one_ct_size]);
+            coeff_val_cnt, &inter_res[j * one_ct_sz]);
         utils::multiply_poly_acum( // poly_id = 1
             fst_dim_query[k].data(1),
             (*db_[db_idx]).data(), coeff_val_cnt,
-            &inter_res[j * one_ct_size + coeff_val_cnt]);
+            &inter_res[j * one_ct_sz + coeff_val_cnt]);
         db_idx++;
       }
     }
   }
-
-  utils::print_sum();
-
 
   auto core_end = CURR_TIME;
   BENCH_PRINT("\t\tCore time:\t" << TIME_DIFF(core_start, core_end) << "ms");
@@ -124,9 +120,9 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
 
   for (size_t j = 0; j < other_dim_sz; ++j) {
     ct_acc = fst_dim_query[fst_dim_sz - 1]; // just a quick way to construct a new ciphertext. Will overwrite data in it.
-    for (size_t poly_id = 0; poly_id < num_poly; poly_id++) {   // Each ciphertext has two polynomials
+    for (size_t poly_id = 0; poly_id < 2; poly_id++) {   // Each ciphertext has two polynomials
       auto mod_acc_ptr = ct_acc.data(poly_id); // pointer to store the modulus of accumulated value
-      auto inter_shift = j * one_ct_size + poly_id * coeff_val_cnt;
+      auto inter_shift = j * one_ct_sz + poly_id * coeff_val_cnt;
       auto buff_ptr = inter_res.data() + inter_shift;
       
       for (int mod_id = 0; mod_id < coeff_mod_count; mod_id++) {  // RNS has two moduli

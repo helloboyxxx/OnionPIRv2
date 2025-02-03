@@ -23,3 +23,4 @@ void test_reading_pt();
 void test_reading_ct();
 void test_reading_inter();
 void test_matrix_mult();
+void test_pt_size();
