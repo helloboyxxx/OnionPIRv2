@@ -21,5 +21,4 @@ void test_pir();
 void test_prime_gen();
 void test_reading_pt();
 void test_reading_ct();
-void test_reading_inter();
 void test_matrix_mult();

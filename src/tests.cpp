@@ -10,8 +10,8 @@
 
 
 
-#define EXPERIMENT_ITERATIONS 1
-#define WARMUP_ITERATIONS     0
+#define EXPERIMENT_ITERATIONS 5
+#define WARMUP_ITERATIONS     3
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG
@@ -38,10 +38,9 @@ void run_tests() {
   test_pir();
 
   // test_prime_gen();
-  test_reading_pt();
-  test_reading_ct();
-  // test_reading_inter();
-  test_matrix_mult();
+  // test_reading_pt();
+  // test_reading_ct();
+  // test_matrix_mult();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -717,20 +716,69 @@ void test_reading_ct() {
 }
 
 
+// // Function to create a large dummy vector for padding
+// std::vector<uint8_t> create_padding(size_t size_in_bytes) {
+//     return std::vector<uint8_t>(size_in_bytes, 0);
+// }
 
 
-void test_reading_inter() {
+// void test_trivial_loop() {
+//     print_func_name(__FUNCTION__);
+    
+//     PirParams pir_params;
+//     const size_t num_pt = pir_params.get_num_pt();
+//     const auto seal_params = pir_params.get_seal_params();
+//     const size_t coeff_count = seal_params.poly_modulus_degree();
 
-}
+//     // Define padding size (e.g., 1 MB)
+//     constexpr size_t padding_size = 1 << 20; // 1 MB
+
+//     auto padding1 = create_padding(padding_size);
+//     std::vector<uint64_t> vec1(num_pt * coeff_count);
+
+//     auto padding2 = create_padding(padding_size);
+//     std::vector<uint64_t> vec2(num_pt * coeff_count);
+
+//     auto padding3 = create_padding(padding_size);
+//     std::vector<uint64_t> vec3(num_pt * coeff_count);
+
+//     // Fill vec1 and vec2 with random values
+//     std::mt19937_64 rng(12345ULL);
+//     std::uniform_int_distribution<uint64_t> dist_matrix(0ULL, std::numeric_limits<uint64_t>::max());
+//     for (size_t i = 0; i < num_pt * coeff_count; i++) {
+//         vec1[i] = dist_matrix(rng);
+//         vec2[i] = dist_matrix(rng);
+//         vec3[i] = dist_matrix(rng);
+//     }
+
+//     uint64_t sum = 0;
+//     // Perform the linear scan
+//     auto start = CURR_TIME;
+//     for (size_t i = 0; i < num_pt * coeff_count; i++) {
+//         // sum ^= vec1[i] ^ vec2[i] ^ vec3[i];
+//         asm volatile("" : : "r"(vec1[i]) : "memory");
+//         asm volatile("" : : "r"(vec2[i]) : "memory");
+//         asm volatile("" : : "r"(vec3[i]) : "memory");
+//     }
+//     auto end = CURR_TIME;
+
+//     BENCH_PRINT("Time: " << TIME_DIFF(start, end) << " ms");
+//     BENCH_PRINT("Sum: " << sum);
+// }
 
 
 void test_matrix_mult () {
   print_func_name(__FUNCTION__);
 
-  PirParams pir_params;
-  const size_t num_pt = pir_params.get_num_pt();
-  const auto seal_params = pir_params.get_seal_params();
-  const size_t coeff_count = seal_params.poly_modulus_degree();
+  // PirParams pir_params;
+  // const size_t num_pt = pir_params.get_num_pt();
+  // const auto seal_params = pir_params.get_seal_params();
+  // const size_t coeff_count = seal_params.poly_modulus_degree();
+
+  const size_t num_pt = 524288;
+  const size_t coeff_count = 1024;
+  const size_t db_size = num_pt * coeff_count * sizeof(uint64_t) / 1024 / 1024; // in MB
+  BENCH_PRINT("db_size: " << db_size << " MB");
 
 
   // Create a random generator
@@ -782,8 +830,14 @@ void test_matrix_mult () {
   }
   auto matrix_mult_end = CURR_TIME; 
 
-  BENCH_PRINT("Matrix-vector multiplication time: " << TIME_DIFF(matrix_mult_start, matrix_mult_end) << " ms");
+  auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(matrix_mult_end - matrix_mult_start).count();
 
+  BENCH_PRINT("Matrix-vector multiplication time: " << elapsed_time_us << " us");
+
+  // throughput in MB/s, intermediate result is in us
+  double throughput = db_size / (elapsed_time_us / 1000000.0);
+  BENCH_PRINT("Throughput: " << throughput << " MB/s");
+  
 
   // sum the result to force reading the result
   uint64_t tot = 0;
