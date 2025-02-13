@@ -83,28 +83,31 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   std::fill(inter_res.begin(), inter_res.end(), 0);
 
   /*
-  I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, each column is
-  other_dim_sz many consecutive entries in the database. We are going to
-  multiply the selection_vector with the DB. Then only one column of the result
-  is going to be added to the result vector.
-  The high level is summing C_{BFV_k} * DB_{N_1 * j + k}
+  I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
+  vector. The goal is to calculate DB * fst_dim_query, but each multiplication is
+  a vector-vector elementwise multiplication.
+  TODO: I believe this can be optimized. Currently, the throughput is same as
+  the vec-vec elementwise multiplication. However, ideally, the first dimension
+  is equivalent to poly_degree many mat-vec multiplications.
+  Well, obviously, I need help.
   */
   auto core_start = CURR_TIME;
 
-  size_t db_idx = 0;
+  uint64_t *db_ptr;
+  uint64_t *q0, *q1;
+  uint128_t *inter_ptr0, *inter_ptr1;
   for (size_t row = 0; row < other_dim_sz; ++row) {
     for (size_t col = 0; col < fst_dim_sz; ++col) {
-      auto db_ptr = db_[db_idx]->data();
-      for (size_t poly_id = 0; poly_id < 2; poly_id++) {
-        auto query_ptr = fst_dim_query[col].data(poly_id);
-        #pragma GCC unroll 32
-        for (size_t elem_id = 0; elem_id < coeff_val_cnt; ++elem_id) {
-          // The following is equivalent to: inter_res[row * one_ct_sz + poly_id * coeff_val_cnt + elem_id] += fst_dim_query[col].data(poly_id)[elem_id] * db_[db_idx][elem_id]
-          inter_res[row * one_ct_sz + poly_id * coeff_val_cnt + elem_id] +=
-              static_cast<uint128_t>(query_ptr[elem_id]) * db_ptr[elem_id];
-        }
+      db_ptr = db_[row * fst_dim_sz + col].value().data();
+      q0 = fst_dim_query[col].data(0); // query polynomial 0
+      q1 = fst_dim_query[col].data(1); // query polynomial 1
+      inter_ptr0 = inter_res.data() + row * one_ct_sz; // intermediate result ptr for polynomial 0
+      inter_ptr1 = inter_res.data() + row * one_ct_sz + coeff_val_cnt;
+      #pragma GCC unroll 32
+      for (size_t elem_id = 0; elem_id < coeff_val_cnt; ++elem_id) {
+        inter_ptr0[elem_id] += static_cast<uint128_t>(q0[elem_id]) * db_ptr[elem_id];
+        inter_ptr1[elem_id] += static_cast<uint128_t>(q1[elem_id]) * db_ptr[elem_id];
       }
-      db_idx++;
     }
   }
 
@@ -231,28 +234,15 @@ void PirServer::set_client_gsw_key(const uint32_t client_id, std::stringstream &
 }
 
 
-Entry PirServer::direct_get_entry(const uint64_t abstract_entry_idx) {
-  auto fst_dim_sz = pir_params_.get_fst_dim_sz();
-  auto other_dim_sz = pir_params_.get_other_dim_sz();
-  auto abstract_poly_idx = abstract_entry_idx / pir_params_.get_num_entries_per_plaintext();
-  // Calculate the actual index based on the abstract index
-  auto actual_poly_idx = poly_idx_to_actual(abstract_poly_idx, fst_dim_sz, other_dim_sz);
-  auto local_idx = abstract_entry_idx % pir_params_.get_num_entries_per_plaintext();
-  auto actual_entry_idx = actual_poly_idx * pir_params_.get_num_entries_per_plaintext() + local_idx;
-  auto entry_size = pir_params_.get_entry_size();
-
+Entry PirServer::direct_get_entry(const uint64_t entry_idx) {
   // read the entry from raw_db_file
   std::ifstream in_file(RAW_DB_FILE, std::ios::binary);
   if (!in_file.is_open()) {
     throw std::invalid_argument("Unable to open file for reading");
   }
-
-
-  // Seek to the correct position to the plaintext in the file
-  // in_file.seekg(actual_entry_idx * entry_size);
-  in_file.seekg(abstract_entry_idx * entry_size);
-
   // Read the entry from the file
+  auto entry_size = pir_params_.get_entry_size();
+  in_file.seekg(entry_idx * entry_size);
   Entry entry(entry_size);
   in_file.read(reinterpret_cast<char *>(entry.data()), entry_size);
   in_file.close();
