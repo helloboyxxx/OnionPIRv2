@@ -47,19 +47,39 @@ size_t PirClient::get_database_plain_index(size_t entry_index) {
   return entry_index / pir_params_.get_num_entries_per_plaintext();
 }
 
+// std::vector<size_t> PirClient::get_query_indices(size_t plaintext_index) {
+//   std::vector<size_t> query_indices;
+//   size_t index = plaintext_index;
+//   size_t remain_pt_num = pir_params_.get_num_pt();
+
+//   for (auto dim_size : dims_) {
+//     remain_pt_num /= dim_size;
+//     query_indices.push_back(index / remain_pt_num);
+//     index = index % remain_pt_num;
+//   }
+
+//   return query_indices;
+// }
+
+
 std::vector<size_t> PirClient::get_query_indices(size_t plaintext_index) {
   std::vector<size_t> query_indices;
-  size_t index = plaintext_index;
-  size_t remain_pt_num = pir_params_.get_num_pt();
+  size_t col_idx = plaintext_index % dims_[0];  // the first dimension
+  size_t row_idx = plaintext_index / dims_[0];  // the rest of the dimensions
+  size_t remain_pt_num = pir_params_.get_num_pt() / dims_[0];
 
-  for (auto dim_size : dims_) {
+  query_indices.push_back(col_idx);
+  for (size_t i = 1; i < dims_.size(); i++) {
+    size_t dim_size = dims_[i];
     remain_pt_num /= dim_size;
-    query_indices.push_back(index / remain_pt_num);
-    index = index % remain_pt_num;
+    query_indices.push_back(row_idx / remain_pt_num);
+    row_idx = row_idx % remain_pt_num;
   }
 
   return query_indices;
 }
+
+
 
 PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
 

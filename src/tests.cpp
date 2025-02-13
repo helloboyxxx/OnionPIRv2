@@ -10,8 +10,8 @@
 
 
 
-#define EXPERIMENT_ITERATIONS 5
-#define WARMUP_ITERATIONS     1
+#define EXPERIMENT_ITERATIONS 2
+#define WARMUP_ITERATIONS     0
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG
@@ -42,7 +42,7 @@ void run_tests() {
   // test_reading_ct();
   // test_reading_inter();
   // test_matrix_mult();
-  test_pt_size();
+  // test_pt_size();
 
   PRINT_BAR;
   DEBUG_PRINT("Tests finished");
@@ -423,7 +423,7 @@ void test_pir() {
     // ============= CLIENT ===============
     // client gets result from the server and decrypts it
     auto decrypted_result = client.decrypt_result(result);
-    Entry entry = client.get_entry_from_plaintext(entry_index, decrypted_result[0]);
+    Entry result_entry = client.get_entry_from_plaintext(entry_index, decrypted_result[0]);
     auto c_end_time = CURR_TIME;
 
     // write the result to the stream to test the size
@@ -433,12 +433,12 @@ void test_pir() {
 
     // Directly get the plaintext from server. Not part of PIR.
     Entry actual_entry = server.direct_get_entry(entry_index);
-
     // extract and print the actual entry index
     uint64_t actual_entry_idx = get_entry_idx(actual_entry);
+    uint64_t result_entry_idx = get_entry_idx(result_entry);
 
     // ============= PRINTING RESULTS ===============    
-    BENCH_PRINT("\t\tQuery/actual idx:\t" << entry_index << " / " << actual_entry_idx);
+    DEBUG_PRINT("\t\tWanted/result/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
     BENCH_PRINT("\t\tServer time:\t" << TIME_DIFF(s_start_time, s_end_time) << " ms");
     BENCH_PRINT("\t\tClient Time:\t" << TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time) << " ms"); 
     BENCH_PRINT("\t\tNoise budget:\t" << client.get_decryptor()->invariant_noise_budget(result[0]));
@@ -449,7 +449,7 @@ void test_pir() {
     }
     server_time_sum += TIME_DIFF(s_start_time, s_end_time);
     client_time_sum += TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time);
-    if (entry_is_equal(entry, actual_entry)) {
+    if (entry_is_equal(result_entry, actual_entry)) {
       // print a green success message
       std::cout << "\033[1;32mSuccess!\033[0m" << std::endl;
       success_count++;
@@ -458,7 +458,7 @@ void test_pir() {
       std::cout << "\033[1;31mFailure!\033[0m" << std::endl;
 
       std::cout << "PIR Result:\t";
-      print_entry(entry);
+      print_entry(result_entry);
       std::cout << "Actual Entry:\t";
       print_entry(actual_entry);
     }
