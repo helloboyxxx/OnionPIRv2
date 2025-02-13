@@ -7,17 +7,6 @@ typedef std::vector<std::vector<uint64_t>> GSWCiphertext;
 
 class GSWEval {
 public:
-  uint64_t ext_acc_time_us = 0;
-  void reset() {
-    ext_acc_time_us = 0;
-  }
-  void print_timer() {
-    std::cout << "ext_acc_time in ms: " << ext_acc_time_us / 1000 << std::endl;
-  }
-
-
-
-
   /*!
     Computes the external product between a GSW ciphertext and a decomposed BFV
     ciphertext.

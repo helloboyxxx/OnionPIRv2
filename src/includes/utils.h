@@ -58,7 +58,6 @@ inline void multiply_acum(const uint64_t op1, const uint64_t op2, uint128_t &pro
   
   // The actual computation.
   product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
-  product_acum = product_acum + static_cast<uint128_t>(op1) * (op2);
 }
 
 /*!

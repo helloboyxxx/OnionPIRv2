@@ -8,10 +8,6 @@
 #include <fstream>
 
 
-// temp global time_accum in us;
-uint64_t acc_time_us = 0;
-
-
 // copy the pir_params and set evaluator equal to the context_. 
 // client_galois_keys_, client_gsw_keys_, and db_ are not set yet.
 PirServer::PirServer(const PirParams &pir_params)
@@ -258,13 +254,7 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
     auto &x = result[i];
     auto &y = result[i + block_size];
     evaluator_.sub_inplace(y, x);  // y - x
-
-
-    auto start = CURR_TIME;
     data_gsw.external_product(selection_cipher, y, y);  // b * (y - x)
-    auto end = CURR_TIME;
-    acc_time_us += std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-
     y.is_ntt_form() = true;
     evaluator_.transform_from_ntt_inplace(y);
     evaluator_.add_inplace(result[i], y);  // x + b * (y - x)
@@ -397,11 +387,6 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
   // std::vector<seal::Ciphertext> result = evaluate_first_dim_no_tiling(query_vector);
   auto first_dim_end = CURR_TIME;
 
-
-  acc_time_us = 0;
-  // reset ext_acc_time_us to 0
-  data_gsw.reset();
-
   // Evaluate the other dimensions
   auto other_dim_start = CURR_TIME;
   if (dims_.size() != 1) {
@@ -410,13 +395,6 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
     }
   }
   auto other_dim_end = CURR_TIME;
-
-  BENCH_PRINT("acc_time in ms: " << acc_time_us / 1000);
-  data_gsw.print_timer();
-
-
-  // change the final result to coefficient form
-  // evaluator_.transform_from_ntt_inplace(result[0]);
 
   // ========================== Post-processing ==========================
   // modulus switching so to reduce the response size by half

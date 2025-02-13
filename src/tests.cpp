@@ -11,7 +11,7 @@
 
 
 #define EXPERIMENT_ITERATIONS 5
-#define WARMUP_ITERATIONS     3
+#define WARMUP_ITERATIONS     1
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG

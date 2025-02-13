@@ -121,33 +121,15 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
 
     for (int p = l - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
-
-
-      // for (size_t k = 0; k < coeff_count; k++) {
-      //   auto ptr = row.data() + k * coeff_mod_count;
-      //   seal::util::right_shift_uint(ptr, p * base_log2, coeff_mod_count, ptr); // shift right by p * base_log2
-      //   ptr[0] &= mask;
-      //   for (int i = 1; i < coeff_mod_count; i++) {
-      //     ptr[i] = 0;
-      //   }
-      // }
-
-
-      auto start = CURR_TIME;
       for (size_t k = 0; k < coeff_count; k++) {
         auto ptr = row.data() + k * coeff_mod_count;
+        // ! This right shift is very time consuming. About 3 times slower than the actual external product multiplication.
         seal::util::right_shift_uint(ptr, p * base_log2, coeff_mod_count, ptr); // shift right by p * base_log2
-      }
-      ext_acc_time_us += std::chrono::duration_cast<std::chrono::microseconds>(CURR_TIME - start).count();
-      
-      for (size_t k = 0; k < coeff_count; k++) {
-        auto ptr = row.data() + k * coeff_mod_count;
         ptr[0] &= mask;
         for (int i = 1; i < coeff_mod_count; i++) {
           ptr[i] = 0;
         }
       }
-
       rns_base->decompose_array(row.data(), coeff_count, pool);
 
       // transform to NTT form
