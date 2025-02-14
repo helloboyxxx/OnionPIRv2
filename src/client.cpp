@@ -47,21 +47,6 @@ size_t PirClient::get_database_plain_index(size_t entry_index) {
   return entry_index / pir_params_.get_num_entries_per_plaintext();
 }
 
-// std::vector<size_t> PirClient::get_query_indices(size_t plaintext_index) {
-//   std::vector<size_t> query_indices;
-//   size_t index = plaintext_index;
-//   size_t remain_pt_num = pir_params_.get_num_pt();
-
-//   for (auto dim_size : dims_) {
-//     remain_pt_num /= dim_size;
-//     query_indices.push_back(index / remain_pt_num);
-//     index = index % remain_pt_num;
-//   }
-
-//   return query_indices;
-// }
-
-
 std::vector<size_t> PirClient::get_query_indices(size_t plaintext_index) {
   std::vector<size_t> query_indices;
   size_t col_idx = plaintext_index % dims_[0];  // the first dimension

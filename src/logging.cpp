@@ -77,7 +77,7 @@ void TimerLogger::printAverageResults() {
     std::cout << "===== Average Timing Results =====\n";
     for (const auto& [section, totalTime] : totalTimes) {
         double avgTime = totalTime / count[section];
-        std::cout << section << ": " << avgTime << " ms\n";
+        std::cout << section << ": " << (size_t)avgTime << " ms\n";
     }
 }
 
@@ -98,7 +98,7 @@ void TimerLogger::prettyPrintHelper(const std::string& section, const std::strin
     if (it != experimentRecords.back().end()) {
         std::cout << prefix;
         std::cout << (isLast ? "└── " : "├── ");
-        std::cout << section << ": " << it->second << " ms\n";
+        std::cout << section << ": " << (size_t)it->second << " ms\n";
     }
 
     auto subSections = LOG_HIERARCHY.find(section);
@@ -118,7 +118,7 @@ void TimerLogger::prettyPrint() {
         return;
     }
 
-    std::cout << "===== Average Results =====\n";
+    std::cout << "========== Average Results ==========\n";
     prettyPrintHelper(SERVER_TOT_TIME, "", false);
     prettyPrintHelper(CLIENT_TOT_TIME, "", true);
 }

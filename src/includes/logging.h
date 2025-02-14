@@ -34,12 +34,13 @@
 #define FST_NTT_TIME "First dim NTT"
 #define OTHER_NTT_TIME "Other dim NTT"
 #define DECOMP_RLWE_TIME "Decomp RLWE"
+#define FST_DELEY_MOD_TIME "First dim delay mod"
 
 
 // Hierarchical structure for pretty result
 const std::unordered_map<std::string, std::vector<std::string>> LOG_HIERARCHY = {
     {SERVER_TOT_TIME, {EXPAND_TIME, CONVERT_TIME, FST_DIM_TIME, OTHER_DIM_TIME}},
-    {FST_DIM_TIME, {CORE_TIME, FST_NTT_TIME}},
+    {FST_DIM_TIME, {CORE_TIME, FST_DELEY_MOD_TIME, FST_NTT_TIME}},
     {OTHER_DIM_TIME, {OTHER_NTT_TIME, EXTERN_PROD_TOT_TIME}},
     {EXTERN_PROD_TOT_TIME, {DECOMP_RLWE_TIME, EXTERN_PROD_MAT_MULT_TIME}}
 };

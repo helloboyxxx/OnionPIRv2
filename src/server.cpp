@@ -115,10 +115,10 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   TIME_END(CORE_TIME);
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
+  TIME_START(FST_DELEY_MOD_TIME);
   std::vector<seal::Ciphertext> result; // output vector
   result.reserve(other_dim_sz);
   seal::Ciphertext ct_acc;
-
   for (size_t j = 0; j < other_dim_sz; ++j) {
     ct_acc = fst_dim_query[fst_dim_sz - 1]; // just a quick way to construct a new ciphertext. Will overwrite data in it.
     for (size_t poly_id = 0; poly_id < 2; poly_id++) {   // Each ciphertext has two polynomials
@@ -137,6 +137,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
         }
       }
     }
+    TIME_END(FST_DELEY_MOD_TIME);
     TIME_START(FST_NTT_TIME);
     evaluator_.transform_from_ntt_inplace(ct_acc);  // transform the result back to coefficient form
     TIME_END(FST_NTT_TIME);
@@ -401,11 +402,9 @@ void PirServer::fill_inter_res() {
   // number of rns modulus
   auto num_mods = pir_params_.get_ct_coeff_mod_cnt();
   DEBUG_PRINT("Number of RNS moduli: " << num_mods);
-  // number of coefficients in a ciphertext
-  auto coeff_count = DatabaseConstants::PolyDegree * num_mods * 2;  // 2 for two polynomials
   auto other_dim_sz = pir_params_.get_other_dim_sz();
   // number of uint128_t we need to store in the intermediate result
-  auto elem_cnt = other_dim_sz * coeff_count;
+  auto elem_cnt = other_dim_sz * DatabaseConstants::PolyDegree * num_mods * 2;
   // allocate memory for the intermediate result
   inter_res.resize(elem_cnt);
 }
