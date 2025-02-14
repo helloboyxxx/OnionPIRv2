@@ -118,7 +118,7 @@ void TimerLogger::prettyPrint() {
         return;
     }
 
-    std::cout << "===== Pretty Timing Results =====\n";
+    std::cout << "===== Average Results =====\n";
     prettyPrintHelper(SERVER_TOT_TIME, "", false);
     prettyPrintHelper(CLIENT_TOT_TIME, "", true);
 }

@@ -30,14 +30,14 @@ std::vector<Ciphertext> PirClient::generate_gsw_from_key() {
   const auto sk_ = secret_key_->data();
   const auto ntt_tables = context_->first_context_data()->small_ntt_tables();
   const auto coeff_modulus = context_->first_context_data()->parms().coeff_modulus();
-  const auto coeff_mod_count = coeff_modulus.size();
+  const auto rns_mod_cnt = coeff_modulus.size();
   const auto coeff_count = enc_params_.poly_modulus_degree();
-  std::vector<uint64_t> sk_ntt(enc_params_.poly_modulus_degree() * coeff_mod_count);
+  std::vector<uint64_t> sk_ntt(enc_params_.poly_modulus_degree() * rns_mod_cnt);
 
-  memcpy(sk_ntt.data(), sk_.data(), coeff_count * coeff_mod_count * sizeof(uint64_t));
+  memcpy(sk_ntt.data(), sk_.data(), coeff_count * rns_mod_cnt * sizeof(uint64_t));
 
   RNSIter secret_key_iter(sk_ntt.data(), coeff_count);
-  inverse_ntt_negacyclic_harvey(secret_key_iter, coeff_mod_count, ntt_tables);
+  inverse_ntt_negacyclic_harvey(secret_key_iter, rns_mod_cnt, ntt_tables);
 
   key_gsw.encrypt_plain_to_gsw(sk_ntt, *encryptor_, *secret_key_, gsw_enc);
   return gsw_enc;
@@ -112,18 +112,18 @@ PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
   const auto base_log2 = pir_params_.get_base_log2();
   const auto context_data = context_->first_context_data();
   const auto coeff_modulus = context_data->parms().coeff_modulus();
-  const auto coeff_mod_count = coeff_modulus.size();  // 2 here, not 3. Notice that here we use the first context_data, not all of coeff_modulus are used.
+  const auto rns_mod_cnt = coeff_modulus.size();  // 2 here, not 3. Notice that here we use the first context_data, not all of coeff_modulus are used.
 
   // The following two for-loops calculates the powers for GSW gadgets.
-  std::vector<uint128_t> inv(coeff_mod_count);
-  for (int k = 0; k < coeff_mod_count; k++) {
+  std::vector<uint128_t> inv(rns_mod_cnt);
+  for (size_t k = 0; k < rns_mod_cnt; k++) {
     uint64_t result;
     seal::util::try_invert_uint_mod(bits_per_ciphertext, coeff_modulus[k], result);
     inv[k] = result;
   }
 
-  // coeff_mod_count many rows, each row is B^{l-1},, ..., B^0 under different moduli
-  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l, base_log2, coeff_mod_count, coeff_modulus);
+  // rns_mod_cnt many rows, each row is B^{l-1},, ..., B^0 under different moduli
+  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l, base_log2, rns_mod_cnt, coeff_modulus);
 
   // no further dimensions
   if (query_indices.size() == 1) {
@@ -131,14 +131,14 @@ PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
   }
   // This for-loop corresponds to the for-loop in Algorithm 1 from the OnionPIR paper
   auto q_head = query.data(0); // points to the first coefficient of the first ciphertext(c0) 
-  for (int i = 1; i < query_indices.size(); i++) {  // dimensions
+  for (size_t i = 1; i < query_indices.size(); i++) {  // dimensions
     // we use this if statement to replce the j for loop in Algorithm 1. This is because N_i = 2 for all i > 0
     // When 0 is requested, we use initial encrypted value of PirQuery query, where the coefficients decrypts to 0. 
     // When 1 is requested, we add special values to the coefficients of the query so that they decrypts to correct GSW(1) values.
     if (query_indices[i] == 1) {
       // ! pt is a ct_coeff_type *. It points to the current position to be written.
-      for (int k = 0; k < l; k++) {
-        for (int mod_id = 0; mod_id < coeff_mod_count; mod_id++) {
+      for (size_t k = 0; k < l; k++) {
+        for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {
           auto pad = mod_id * DatabaseConstants::PolyDegree;   // We use two moduli for the same gadget value. They are apart by coeff_count.
           auto coef_pos = dims_[0] + (i-1) * l + k + pad;  // the position of the coefficient in the query
           uint128_t mod = coeff_modulus[mod_id].value();
@@ -172,9 +172,9 @@ size_t PirClient::create_galois_keys(std::stringstream &galois_key_stream) const
   // This is related to the unpacking algorithm.
   // expansion height is the height of the expansion tree such that
   // 2^get_expan_height() is equal to the number of packed values padded to the next power of 2.
-  const int expan_height = get_expan_height();
-  const int poly_degree = enc_params_.poly_modulus_degree();
-  for (int i = 0; i < expan_height; i++) {
+  const size_t expan_height = get_expan_height();
+  const size_t poly_degree = enc_params_.poly_modulus_degree();
+  for (size_t i = 0; i < expan_height; i++) {
     galois_elts.push_back(1 + (poly_degree >> i));
   }
   // PRINT_INT_ARRAY("galois_elts: ", galois_elts, galois_elts.size());

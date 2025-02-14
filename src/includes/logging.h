@@ -19,7 +19,7 @@
 
 #define BENCH_PRINT(s) std::cout << s << std::endl;
 
-#define PRINT_BAR DEBUG_PRINT("==============================================================");
+#define PRINT_BAR BENCH_PRINT("==============================================================");
 
 // predefine some name for logging
 #define CORE_TIME "Core"
@@ -29,17 +29,19 @@
 #define CONVERT_TIME "Convert"
 #define SERVER_TOT_TIME "Server total"
 #define CLIENT_TOT_TIME "Client total"
-#define EXTERN_PROD_TIME "External product"
+#define EXTERN_PROD_TOT_TIME "External product total"
+#define EXTERN_PROD_MAT_MULT_TIME "External product mat mult"
 #define FST_NTT_TIME "First dim NTT"
 #define OTHER_NTT_TIME "Other dim NTT"
-#define RLWE_DECOMP_TIME "RLWE decomp"
+#define DECOMP_RLWE_TIME "Decomp RLWE"
 
 
 // Hierarchical structure for pretty result
 const std::unordered_map<std::string, std::vector<std::string>> LOG_HIERARCHY = {
     {SERVER_TOT_TIME, {EXPAND_TIME, CONVERT_TIME, FST_DIM_TIME, OTHER_DIM_TIME}},
     {FST_DIM_TIME, {CORE_TIME, FST_NTT_TIME}},
-    {OTHER_DIM_TIME, {OTHER_NTT_TIME, RLWE_DECOMP_TIME, EXTERN_PROD_TIME}}
+    {OTHER_DIM_TIME, {OTHER_NTT_TIME, EXTERN_PROD_TOT_TIME}},
+    {EXTERN_PROD_TOT_TIME, {DECOMP_RLWE_TIME, EXTERN_PROD_MAT_MULT_TIME}}
 };
 
 

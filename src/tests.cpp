@@ -132,7 +132,7 @@ void test_external_product() {
   
   // print b
   std::string b_result = "Vector b: ";
-  for (int i = 0; i < 5; i++) {
+  for (size_t i = 0; i < 5; i++) {
     b_result += std::to_string(b[i]) + " ";
   }
   DEBUG_PRINT(b_result);
@@ -150,7 +150,7 @@ void test_external_product() {
 
   size_t mult_rounds = 1;
 
-  for (int i = 0; i < mult_rounds; i++) {
+  for (size_t i = 0; i < mult_rounds; i++) {
     data_gsw.external_product(b_gsw, a_encrypted, a_encrypted);
     a_encrypted.is_ntt_form() = true;
     evaluator_.transform_from_ntt_inplace(a_encrypted);
@@ -363,8 +363,6 @@ void serialization_example() {
 
 void test_pir() {
   print_func_name(__FUNCTION__);
-  auto server_time_sum = 0;
-  auto client_time_sum = 0;
   auto success_count = 0;
   
   // ============== setting parameters for PIR scheme ==============
@@ -385,12 +383,12 @@ void test_pir() {
 
   // Run the query process many times.
   srand(time(0)); // reset the seed for the random number generator
-  for (int i = 0; i < EXPERIMENT_ITERATIONS; i++) {
+  for (size_t i = 0; i < EXPERIMENT_ITERATIONS; i++) {
     
     // ============= OFFLINE PHASE ==============
     // Initialize the client
     PirClient client(pir_params);
-    const int client_id = rand();
+    const size_t client_id = rand();
     std::stringstream galois_key_stream, gsw_stream, data_stream;
 
     // Client create galois keys and gsw keys and writes to the stream (to the server)
@@ -439,7 +437,9 @@ void test_pir() {
     END_EXPERIMENT();
     // ============= PRINTING RESULTS ===============    
     DEBUG_PRINT("\t\tWanted/result/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
+    #ifdef _DEBUG
     PRINT_RESULTS(i+1);
+    #endif
 
     if (entry_is_equal(result_entry, actual_entry)) {
       // print a green success message
@@ -458,7 +458,11 @@ void test_pir() {
 
   double avg_server_time = GET_AVG_TIME(SERVER_TOT_TIME);
   double throughput = pir_params.get_DBSize_MB() / (avg_server_time / 1000);
-  // ============= PRINTING FINAL RESULTS ===============
+  
+
+  // ============= PRINTING FINAL RESULTS ===============]
+  BENCH_PRINT("                       FINAL RESULTS                         ")
+  PRINT_BAR;
   BENCH_PRINT("Success rate: " << success_count << "/" << EXPERIMENT_ITERATIONS);
   BENCH_PRINT("galois key size: " << galois_key_size << " bytes");
   BENCH_PRINT("gsw key size: " << gsw_key_size << " bytes");
@@ -597,8 +601,8 @@ void test_reading_ct() {
   const size_t fst_dim_sz = pir_params.get_fst_dim_sz();
   const size_t other_dim_sz = pir_params.get_other_dim_sz();
   const auto coeff_modulus = context_.first_context_data()->parms().coeff_modulus();
-  const size_t coeff_mod_count = coeff_modulus.size();
-  const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * coeff_mod_count; // polydegree * RNS moduli count
+  const size_t rns_mod_cnt = coeff_modulus.size();
+  const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * rns_mod_cnt; // polydegree * RNS moduli count
   const size_t one_ct_sz = 2 * coeff_val_cnt; // 2 polynomials
 
   BENCH_PRINT("fst_dim_sz: " << fst_dim_sz << ", other_dim_sz: " << other_dim_sz << ", coeff_val_cnt: " << coeff_val_cnt);
@@ -759,7 +763,7 @@ void test_pt_size() {
     pt[i] = i;
   }
   evaluator.transform_to_ntt_inplace(pt, context.first_parms_id());
-  DEBUG_PRINT("pt ntt form should contain coeff_count * coeff_mod_count many uint64_t values");
+  DEBUG_PRINT("pt ntt form should contain coeff_count * rns_mod_cnt many uint64_t values");
   DEBUG_PRINT("This is why we can multiply a ciphertext with a plaintext easily");
   DEBUG_PRINT(pt[0]);
   DEBUG_PRINT(pt[DatabaseConstants::PolyDegree - 1]);

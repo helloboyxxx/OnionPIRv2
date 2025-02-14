@@ -28,8 +28,8 @@ PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_ty
 
   // ================== GSW related parameters ==================
   
-  int bits = 0; // will store log(q) in bits
-  for (int i = 0; i < coeff_modulus.size() - 1; i++) {
+  size_t bits = 0; // will store log(q) in bits
+  for (size_t i = 0; i < coeff_modulus.size() - 1; i++) {
     bits += coeff_modulus[i].bit_count();
   } 
 
@@ -83,7 +83,7 @@ PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_ty
   const uint64_t ndim = 1 + log2(other_dim_sz);
   // All dimensions are fixed to 2 except the first one.
   dims_.push_back(first_dim_sz);
-  for (int i = 1; i < ndim; i++) {
+  for (size_t i = 1; i < ndim; i++) {
     dims_.push_back(2);
   }
 }

@@ -28,10 +28,10 @@ void utils::shift_polynomial(seal::EncryptionParameters &params, seal::Ciphertex
                              seal::Ciphertext &destination, size_t index) {
   const auto encrypted_count = encrypted.size();
   const auto coeff_count = params.poly_modulus_degree();
-  const auto coeff_mod_count = params.coeff_modulus().size() - 1;
+  const auto rns_mod_cnt = params.coeff_modulus().size() - 1;
   destination = encrypted;
-  for (int i = 0; i < encrypted_count; i++) {
-    for (int j = 0; j < coeff_mod_count; j++) {
+  for (size_t i = 0; i < encrypted_count; i++) {
+    for (size_t j = 0; j < rns_mod_cnt; j++) {
       negacyclic_shift_poly_coeffmod(encrypted.data(i) + (j * coeff_count), coeff_count, index,
                                      params.coeff_modulus()[j],
                                      destination.data(i) + (j * coeff_count));
@@ -58,29 +58,18 @@ std::string uint128_to_string(uint128_t value) {
 
 
 
-std::vector<std::vector<uint64_t>> gsw_gadget(size_t l, uint64_t base_log2, size_t coeff_mod_count,
+std::vector<std::vector<uint64_t>> gsw_gadget(size_t l, uint64_t base_log2, size_t rns_mod_cnt,
                 const std::vector<seal::Modulus> &coeff_modulus) {
   // Create RGSW gadget.
-  std::vector<std::vector<uint64_t>> gadget(coeff_mod_count, std::vector<uint64_t>(l));
-  for (int i = 0; i < coeff_mod_count; i++) {
+  std::vector<std::vector<uint64_t>> gadget(rns_mod_cnt, std::vector<uint64_t>(l));
+  for (size_t i = 0; i < rns_mod_cnt; i++) {
     const uint128_t mod = coeff_modulus[i].value();
     uint128_t pow = 1;
-    for (int j = l - 1; j >= 0; j--) {
+    for (size_t j = l - 1; j >= 0; j--) {
       gadget[i][j] = pow;
       pow = (pow << base_log2) % mod;
     }
   }
-
-// #ifdef _DEBUG
-//   for (int i = 0; i < coeff_mod_count; i++) {
-//     std::cout << "Gadget for mod " << i << ": " << std::endl;
-//     for (int j = 0; j < l; j++) {
-//       std::cout << uint128_to_string(gadget[i][j]) << " ";
-//     }
-//     std::cout << std::endl;
-//   }
-// #endif
-
   return gadget;
 }
 
@@ -135,7 +124,7 @@ std::uint64_t generate_prime(size_t bit_width) {
 // converting a uint64_t to a std::vector<uint8_t> of size 8. Assyming the input vector has at least 8 elements.
 void writeIdxToEntry(const uint64_t idx, Entry &entry) {
   // Convert id to bytes and write them to the start of the entry.
-  for (int i = 0; i < 8; ++i) {
+  for (size_t i = 0; i < 8; ++i) {
     // Extract the i-th byte from the least significant to the most significant
     entry[7 - i] = static_cast<uint8_t>((idx >> (i * 8)) & 0xFF);
   }
@@ -143,7 +132,7 @@ void writeIdxToEntry(const uint64_t idx, Entry &entry) {
 
 uint64_t get_entry_idx(const Entry &entry) {
   uint64_t idx = 0;
-  for (int i = 0; i < 8; ++i) {
+  for (size_t i = 0; i < 8; ++i) {
     idx |= static_cast<uint64_t>(entry[7 - i]) << (i * 8);
   }
   return idx;
@@ -151,10 +140,10 @@ uint64_t get_entry_idx(const Entry &entry) {
 
 
 void print_entry(const Entry &entry) {
-  int cnt = 0;
+  size_t cnt = 0;
   for (auto &val : entry) {
     if (cnt < 10) { 
-      std::cout << (int)val << ", ";
+      std::cout << (size_t)val << ", ";
     }
     cnt += 1;
   }
@@ -193,13 +182,13 @@ size_t poly_idx_to_actual(const size_t poly_idx, const size_t fst_dim_sz, const 
 
 void print_progress(size_t current, size_t total) {
     float progress = static_cast<float>(current) / total;
-    int bar_width = 70;
+    size_t bar_width = 70;
 
     // Move the cursor to the beginning and clear the line.
     std::cout << "\r\033[K[";
 
-    int pos = static_cast<int>(bar_width * progress);
-    for (int i = 0; i < bar_width; ++i) {
+    size_t pos = static_cast<size_t>(bar_width * progress);
+    for (size_t i = 0; i < bar_width; ++i) {
         if (i < pos)
             std::cout << "=";
         else if (i == pos)
@@ -207,7 +196,7 @@ void print_progress(size_t current, size_t total) {
         else
             std::cout << " ";
     }
-    std::cout << "] " << int(progress * 100.0) << " %";
+    std::cout << "] " << size_t(progress * 100.0) << " %";
     std::cout.flush();
 }
 
