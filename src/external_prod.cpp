@@ -124,7 +124,7 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
     memcpy(data.data(), poly_ptr, coeff_count * rns_mod_cnt * sizeof(uint64_t));
     rns_base->compose_array(data.data(), coeff_count, pool);
 
-    for (size_t p = l - 1; p >= 0; p--) {
+    for (int p = l - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
       for (size_t k = 0; k < coeff_count; k++) {
         auto ptr = row.data() + k * rns_mod_cnt;
@@ -203,9 +203,9 @@ GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
 
   // Accessing context data within this function instead of passing these parameters
   const auto &parms = context->first_context_data()->parms();
-  size_t coeff_count = parms.poly_modulus_degree();
-  size_t rns_mod_cnt = parms.coeff_modulus().size();
+  const size_t coeff_count = parms.poly_modulus_degree();
   const auto &coeff_modulus = parms.coeff_modulus();
+  const size_t rns_mod_cnt = coeff_modulus.size();
   assert(plaintext.size() == coeff_count * rns_mod_cnt || plaintext.size() == coeff_count);
 
   // Create RGSW gadget.

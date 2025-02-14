@@ -65,7 +65,7 @@ std::vector<std::vector<uint64_t>> gsw_gadget(size_t l, uint64_t base_log2, size
   for (size_t i = 0; i < rns_mod_cnt; i++) {
     const uint128_t mod = coeff_modulus[i].value();
     uint128_t pow = 1;
-    for (size_t j = l - 1; j >= 0; j--) {
+    for (int j = l - 1; j >= 0; j--) {
       gadget[i][j] = pow;
       pow = (pow << base_log2) % mod;
     }
