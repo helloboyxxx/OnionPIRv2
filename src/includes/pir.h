@@ -1,25 +1,9 @@
 #pragma once
 
 #include "seal/seal.h"
+#include "logging.h"
 #include "database_constants.h"
 #include <vector>
-
-// ================== MACROs ==================
-#define CURR_TIME std::chrono::high_resolution_clock::now()
-#define TIME_DIFF(start, end) std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count()
-
-// print for debug. Easily turn on/off by defining _DEBUG
-#ifdef _DEBUG
-#define DEBUG_PRINT(s) std::cout << s << std::endl;
-#endif
-
-#ifdef _BENCHMARK
-#define DEBUG_PRINT(s) ; // do nothing
-#endif
-
-#define BENCH_PRINT(s) std::cout << s << std::endl;
-
-#define PRINT_BAR DEBUG_PRINT("==============================================================");
 
 // ================== NAMESPACES  ==================
 using namespace seal::util;
@@ -49,8 +33,9 @@ public:
    * after aligning the end of an entry to the end of a plaintext.
    */
   size_t get_num_bits_per_plaintext() const;
-  seal::EncryptionParameters get_seal_params() const;
-  double get_DBSize_MB() const;
+
+  inline seal::EncryptionParameters get_seal_params() const { return seal_params_; }
+  inline double get_DBSize_MB() const { return static_cast<double>(num_entries_) * entry_size_ / 1024 / 1024; }
   inline size_t get_num_entries() const { return num_entries_; }
   inline size_t get_num_pt() const { return num_pt_; }
   inline size_t get_entry_size() const { return entry_size_; }
@@ -65,6 +50,7 @@ public:
   inline size_t get_other_dim_sz() const { return num_pt_ / dims_[0]; }
   inline size_t get_ct_coeff_mod_cnt() const { return seal_params_.coeff_modulus().size() - 1; }
 
+  // ================== information related ==================
   void print_params() const;
 
 private:
@@ -76,4 +62,5 @@ private:
   size_t base_log2_;         // log of base for RGSW
   std::vector<size_t> dims_; // Number of dimensions
   seal::EncryptionParameters seal_params_;
+
 };

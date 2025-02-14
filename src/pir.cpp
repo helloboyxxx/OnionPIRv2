@@ -105,11 +105,6 @@ size_t PirParams::get_num_entries_per_plaintext() const {
   return total_bits / (entry_size_ * 8);
 }
 
-seal::EncryptionParameters PirParams::get_seal_params() const { return seal_params_; }
-double PirParams::get_DBSize_MB() const {
-  return static_cast<double>(num_entries_) * entry_size_ / 1024 / 1024;
-}
-
 void PirParams::print_params() const {
   std::cout << "==============================================================" << std::endl;
   std::cout << "                       PIR PARAMETERS                         " << std::endl;
@@ -142,8 +137,5 @@ void PirParams::print_params() const {
   std::cout << "  log(q)\t\t\t\t\t= " << log_q << std::endl;
   std::cout << "  log(t)\t\t\t\t\t= "
             << seal_params_.plain_modulus().bit_count() << std::endl;
-  std::cout << "  mod0: " << seal_params_.coeff_modulus()[0].value() << std::endl;
-  std::cout << "  mod1: " << seal_params_.coeff_modulus()[1].value() << std::endl;
-
   std::cout << "==============================================================" << std::endl;
 }

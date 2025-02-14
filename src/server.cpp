@@ -91,7 +91,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   is equivalent to poly_degree many mat-vec multiplications.
   Well, obviously, I need help.
   */
-  auto core_start = CURR_TIME;
+  TIME_START(CORE_TIME);
 
   uint64_t *db_ptr;
   uint64_t *q0, *q1;
@@ -111,8 +111,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
     }
   }
 
-  auto core_end = CURR_TIME;
-  BENCH_PRINT("\t\tCore time:\t" << TIME_DIFF(core_start, core_end) << "ms");
+  TIME_END(CORE_TIME);
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
   std::vector<seal::Ciphertext> result; // output vector
@@ -255,12 +254,12 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
 
   // ========================== Expansion & conversion ==========================
   // Query expansion
-  auto expand_start = CURR_TIME;
+  TIME_START(EXPAND_TIME);
   std::vector<seal::Ciphertext> query_vector = expand_query(client_id, query);
-  auto expand_end = CURR_TIME;
+  TIME_END(EXPAND_TIME);
 
   // Reconstruct RGSW queries
-  auto convert_start = CURR_TIME;
+  TIME_START(CONVERT_TIME);
   std::vector<GSWCiphertext> gsw_vec; // GSW ciphertexts
   if (dims_.size() != 1) {  // if we do need futher dimensions
     gsw_vec.resize(dims_.size() - 1);
@@ -274,23 +273,22 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
       key_gsw.query_to_gsw(lwe_vector, client_gsw_keys_[client_id], gsw_vec[i - 1]);
     }
   }
-  auto convert_end = CURR_TIME;
+  TIME_END(CONVERT_TIME);
 
   // ========================== Evaluations ==========================
   // Evaluate the first dimension
-  auto first_dim_start = CURR_TIME;
+  TIME_START(FST_DIM_TIME);
   std::vector<seal::Ciphertext> result = evaluate_first_dim(query_vector);
-  // std::vector<seal::Ciphertext> result = evaluate_first_dim_no_tiling(query_vector);
-  auto first_dim_end = CURR_TIME;
+  TIME_END(FST_DIM_TIME);
 
   // Evaluate the other dimensions
-  auto other_dim_start = CURR_TIME;
+  TIME_START(OTHER_DIM_TIME);
   if (dims_.size() != 1) {
     for (int i = 1; i < dims_.size(); i++) {
       evaluate_gsw_product(result, gsw_vec[i - 1]);
     }
   }
-  auto other_dim_end = CURR_TIME;
+  TIME_END(OTHER_DIM_TIME);
 
   // ========================== Post-processing ==========================
   // modulus switching so to reduce the response size by half
@@ -298,12 +296,6 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
     DEBUG_PRINT("Modulus switching...");
     evaluator_.mod_switch_to_next_inplace(result[0]); // result.size() == 1.
   }
-
-  // ========================== Timing ==========================
-  BENCH_PRINT("\t\tExpand time:\t" << TIME_DIFF(expand_start, expand_end) << "ms");
-  BENCH_PRINT("\t\tConvert time:\t" << TIME_DIFF(convert_start, convert_end) << "ms");
-  BENCH_PRINT("\t\tFirst dim time:\t" << TIME_DIFF(first_dim_start, first_dim_end) << "ms");
-  BENCH_PRINT("\t\tOther dim time:\t" << TIME_DIFF(other_dim_start, other_dim_end) << "ms");
 
   return result;
 }
@@ -405,7 +397,7 @@ void PirServer::fill_inter_res() {
   // So, we need to calculate the number of uint128_t we need to store.
   // number of rns modulus
   auto num_mods = pir_params_.get_ct_coeff_mod_cnt();
-  BENCH_PRINT("Number of RNS moduli: " << num_mods);
+  DEBUG_PRINT("Number of RNS moduli: " << num_mods);
   // number of coefficients in a ciphertext
   auto coeff_count = DatabaseConstants::PolyDegree * num_mods * 2;  // 2 for two polynomials
   auto other_dim_sz = pir_params_.get_other_dim_sz();

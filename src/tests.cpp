@@ -10,8 +10,7 @@
 
 
 
-#define EXPERIMENT_ITERATIONS 2
-#define WARMUP_ITERATIONS     0
+#define EXPERIMENT_ITERATIONS 3
 
 void print_func_name(std::string func_name) {
 #ifdef _DEBUG
@@ -386,7 +385,7 @@ void test_pir() {
 
   // Run the query process many times.
   srand(time(0)); // reset the seed for the random number generator
-  for (int i = 0; i < EXPERIMENT_ITERATIONS + WARMUP_ITERATIONS; i++) {
+  for (int i = 0; i < EXPERIMENT_ITERATIONS; i++) {
     
     // ============= OFFLINE PHASE ==============
     // Initialize the client
@@ -407,24 +406,24 @@ void test_pir() {
     // ===================== ONLINE PHASE =====================
     // Client start generating query
     size_t entry_index = rand() % pir_params.get_num_entries();
-    BENCH_PRINT("Experiment [" << i+1 << "]");
-
+  
     // ============= CLIENT ===============
-    auto c_start_time = CURR_TIME;  // client start time for the query
+    TIME_START(CLIENT_TOT_TIME);
     PirQuery query = client.generate_query(entry_index);
     query_size = client.write_query_to_stream(query, data_stream);
+    TIME_END(CLIENT_TOT_TIME);
     
     // ============= SERVER ===============
-    auto s_start_time = CURR_TIME;  // server start time for processing the query
+    TIME_START(SERVER_TOT_TIME);
     auto result = server.make_seeded_query(client_id, data_stream);
-    auto s_end_time = CURR_TIME;
-
+    TIME_END(SERVER_TOT_TIME);
 
     // ============= CLIENT ===============
+    TIME_START(CLIENT_TOT_TIME);
     // client gets result from the server and decrypts it
     auto decrypted_result = client.decrypt_result(result);
     Entry result_entry = client.get_entry_from_plaintext(entry_index, decrypted_result[0]);
-    auto c_end_time = CURR_TIME;
+    TIME_END(CLIENT_TOT_TIME);
 
     // write the result to the stream to test the size
     std::stringstream result_stream;
@@ -436,19 +435,12 @@ void test_pir() {
     // extract and print the actual entry index
     uint64_t actual_entry_idx = get_entry_idx(actual_entry);
     uint64_t result_entry_idx = get_entry_idx(result_entry);
-
+    
+    END_EXPERIMENT();
     // ============= PRINTING RESULTS ===============    
     DEBUG_PRINT("\t\tWanted/result/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
-    BENCH_PRINT("\t\tServer time:\t" << TIME_DIFF(s_start_time, s_end_time) << " ms");
-    BENCH_PRINT("\t\tClient Time:\t" << TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time) << " ms"); 
-    BENCH_PRINT("\t\tNoise budget:\t" << client.get_decryptor()->invariant_noise_budget(result[0]));
-    
-    if (i < WARMUP_ITERATIONS) {
-      PRINT_BAR;
-      continue;
-    }
-    server_time_sum += TIME_DIFF(s_start_time, s_end_time);
-    client_time_sum += TIME_DIFF(c_start_time, c_end_time) - TIME_DIFF(s_start_time, s_end_time);
+    PRINT_RESULTS(i+1);
+
     if (entry_is_equal(result_entry, actual_entry)) {
       // print a green success message
       std::cout << "\033[1;32mSuccess!\033[0m" << std::endl;
@@ -456,7 +448,6 @@ void test_pir() {
     } else {
       // print a red failure message
       std::cout << "\033[1;31mFailure!\033[0m" << std::endl;
-
       std::cout << "PIR Result:\t";
       print_entry(result_entry);
       std::cout << "Actual Entry:\t";
@@ -465,16 +456,19 @@ void test_pir() {
     PRINT_BAR;
   }
 
-  auto avg_server_time = server_time_sum / EXPERIMENT_ITERATIONS;
-  BENCH_PRINT("Average server time: " << avg_server_time << " ms");
-  BENCH_PRINT("Average client time: " << client_time_sum / EXPERIMENT_ITERATIONS << " ms");
+  double avg_server_time = GET_AVG_TIME(SERVER_TOT_TIME);
+  double throughput = pir_params.get_DBSize_MB() / (avg_server_time / 1000);
+  // ============= PRINTING FINAL RESULTS ===============
+  BENCH_PRINT("Success rate: " << success_count << "/" << EXPERIMENT_ITERATIONS);
   BENCH_PRINT("galois key size: " << galois_key_size << " bytes");
   BENCH_PRINT("gsw key size: " << gsw_key_size << " bytes");
   BENCH_PRINT("total key size: " << static_cast<double>(galois_key_size + gsw_key_size) / 1024 / 1024 << "MB");
   BENCH_PRINT("query size: " << query_size << " bytes");
   BENCH_PRINT("response size: " << response_size << " bytes");
-  BENCH_PRINT("Throughput: " << pir_params.get_DBSize_MB() / (static_cast<double>(avg_server_time) / 1000) << " MB/s");
-  BENCH_PRINT("Success rate: " << success_count << "/" << EXPERIMENT_ITERATIONS);
+  
+  // PRINT_AVERAGE_RESULTS();
+  PRETTY_PRINT();
+  BENCH_PRINT("Throughput: " << throughput << " MB/s");
 }
 
 void test_prime_gen() {
@@ -537,7 +531,6 @@ void test_reading_pt() {
   }
 
   // Read the database and perform a simple operation
-  auto db_start_time = CURR_TIME;
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
       seal::Plaintext &pt = db[i].value();
@@ -547,10 +540,8 @@ void test_reading_pt() {
       }
     }
   }
-  auto db_end_time = CURR_TIME;
 
   // Perform the same operation on the vector
-  auto vec_start_time = CURR_TIME;
   for (size_t i = 0; i < num_pt; i++) {
     for (size_t poly_id = 0; poly_id < 2; ++poly_id) {
       #pragma GCC unroll 32
@@ -559,7 +550,6 @@ void test_reading_pt() {
       }
     }
   }
-  auto vec_end_time = CURR_TIME;
 
 
   // simple tile
@@ -567,7 +557,6 @@ void test_reading_pt() {
   uint64_t *end = p + vec.size();
   const size_t tile_size = 4096;
 
-  auto vec_simple_start = CURR_TIME;
   while (p < end)
   {
       #pragma GCC unroll 32
@@ -582,31 +571,7 @@ void test_reading_pt() {
       }
       p += tile_size;
   }
-  auto vec_simple_end = CURR_TIME;
 
-  BENCH_PRINT(
-      "Database read time: "
-      << TIME_DIFF(db_start_time, db_end_time) << " ms. Throughput: "
-      << (2.0 * storage_MB /
-          (static_cast<double>(TIME_DIFF(db_start_time, db_end_time)) / 1000))
-      << " MB/s"
-
-  );
-
-  BENCH_PRINT(
-      "Vector operation time: "
-      << TIME_DIFF(vec_start_time, vec_end_time) << " ms. Throughput: "
-      << (2.0 * storage_MB /
-          (static_cast<double>(TIME_DIFF(vec_start_time, vec_end_time)) / 1000))
-      << " MB/s");
-
-
-  BENCH_PRINT(
-      "Vector simple time: "
-      << TIME_DIFF(vec_simple_start, vec_simple_end) << " ms. Throughput: "
-      << (2.0 * storage_MB /
-          (static_cast<double>(TIME_DIFF(vec_simple_start, vec_simple_end)) / 1000))
-      << " MB/s");
 }
 
 
@@ -650,7 +615,6 @@ void test_reading_ct() {
 
 
   // ================== Normal Matrix vector multiplication order ==================
-  auto normal_start = CURR_TIME;
   for (size_t i = 0; i < other_dim_sz; i++) {
     for (size_t j = 0; j < fst_dim_sz; j++) {
       for (size_t k = 0; k < 2; k++) {
@@ -661,13 +625,8 @@ void test_reading_ct() {
       }
     }
   }
-  auto normal_end = CURR_TIME;
-  BENCH_PRINT("Normal time: " << TIME_DIFF(normal_start, normal_end) << " ms");
-
 
   /// ================== With Tiling ==================
-  auto tiling_start = CURR_TIME;
-  // const size_t tile_size = DatabaseConstants::TileSz;
   const size_t tile_size = 32;
   for (size_t k_base = 0; k_base < fst_dim_sz; k_base += tile_size) {
     for (size_t j = 0; j < other_dim_sz; ++j) {
@@ -681,8 +640,6 @@ void test_reading_ct() {
       }
     }
   }
-  auto tiling_end = CURR_TIME;
-  BENCH_PRINT("Tiling time: " << TIME_DIFF(tiling_start, tiling_end) << " ms");
 
 
   // ================== with fst_dim_data rearranged and tiling ==================
@@ -697,8 +654,6 @@ void test_reading_ct() {
     }
   }
 
-
-  auto tiling_rearrange_start = CURR_TIME;
   for (size_t k_base = 0; k_base < fst_dim_sz; k_base += tile_size) {
     for (size_t j = 0; j < other_dim_sz; ++j) {
       for (size_t k = k_base; k < std::min(k_base + tile_size,fst_dim_sz); ++k) {
@@ -711,64 +666,11 @@ void test_reading_ct() {
       }
     }
   }
-  auto tiling_rearrange_end = CURR_TIME;
-  BENCH_PRINT("Tiling and Rearrange time: " << TIME_DIFF(tiling_rearrange_start, tiling_rearrange_end) << " ms");
 
 }
 
-
-// // Function to create a large dummy vector for padding
-// std::vector<uint8_t> create_padding(size_t size_in_bytes) {
-//     return std::vector<uint8_t>(size_in_bytes, 0);
-// }
-
-
-// void test_trivial_loop() {
-//     print_func_name(__FUNCTION__);
-    
-//     PirParams pir_params;
-//     const size_t num_pt = pir_params.get_num_pt();
-//     const auto seal_params = pir_params.get_seal_params();
-//     const size_t coeff_count = seal_params.poly_modulus_degree();
-
-//     // Define padding size (e.g., 1 MB)
-//     constexpr size_t padding_size = 1 << 20; // 1 MB
-
-//     auto padding1 = create_padding(padding_size);
-//     std::vector<uint64_t> vec1(num_pt * coeff_count);
-
-//     auto padding2 = create_padding(padding_size);
-//     std::vector<uint64_t> vec2(num_pt * coeff_count);
-
-//     auto padding3 = create_padding(padding_size);
-//     std::vector<uint64_t> vec3(num_pt * coeff_count);
-
-//     // Fill vec1 and vec2 with random values
-//     std::mt19937_64 rng(12345ULL);
-//     std::uniform_int_distribution<uint64_t> dist_matrix(0ULL, std::numeric_limits<uint64_t>::max());
-//     for (size_t i = 0; i < num_pt * coeff_count; i++) {
-//         vec1[i] = dist_matrix(rng);
-//         vec2[i] = dist_matrix(rng);
-//         vec3[i] = dist_matrix(rng);
-//     }
-
-//     uint64_t sum = 0;
-//     // Perform the linear scan
-//     auto start = CURR_TIME;
-//     for (size_t i = 0; i < num_pt * coeff_count; i++) {
-//         // sum ^= vec1[i] ^ vec2[i] ^ vec3[i];
-//         asm volatile("" : : "r"(vec1[i]) : "memory");
-//         asm volatile("" : : "r"(vec2[i]) : "memory");
-//         asm volatile("" : : "r"(vec3[i]) : "memory");
-//     }
-//     auto end = CURR_TIME;
-
-//     BENCH_PRINT("Time: " << TIME_DIFF(start, end) << " ms");
-//     BENCH_PRINT("Sum: " << sum);
-// }
-
-
 void test_matrix_mult () {
+  // TODO: write optimized matrix multiplication
   print_func_name(__FUNCTION__);
 
   // PirParams pir_params;
@@ -815,7 +717,6 @@ void test_matrix_mult () {
   std::vector<uint64_t> result(coeff_count, 0ULL);
 
 
-  auto matrix_mult_start = CURR_TIME;
   // --- Matrix-vector multiplication ---
   // result[i] = sum_{j=0}^{num_pt-1} matrix[i][j] * vec[j]
   for (size_t i = 0; i < coeff_count; i++)
@@ -829,16 +730,6 @@ void test_matrix_mult () {
       }
       result[i] = sum;
   }
-  auto matrix_mult_end = CURR_TIME; 
-
-  auto elapsed_time_us = std::chrono::duration_cast<std::chrono::microseconds>(matrix_mult_end - matrix_mult_start).count();
-
-  BENCH_PRINT("Matrix-vector multiplication time: " << elapsed_time_us << " us");
-
-  // throughput in MB/s, intermediate result is in us
-  double throughput = db_size / (elapsed_time_us / 1000000.0);
-  BENCH_PRINT("Throughput: " << throughput << " MB/s");
-  
 
   // sum the result to force reading the result
   uint64_t tot = 0;
@@ -848,8 +739,6 @@ void test_matrix_mult () {
 
   // print the total
   BENCH_PRINT("Total: " << tot);
-
-
 }
 
 
