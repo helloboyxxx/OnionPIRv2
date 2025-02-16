@@ -30,10 +30,11 @@
 #define SERVER_TOT_TIME "Server total"
 #define CLIENT_TOT_TIME "Client total"
 #define EXTERN_PROD_TOT_TIME "External product total"
-#define EXTERN_PROD_MAT_MULT_TIME "External product mat mult"
+#define DECOMP_RLWE_TIME "Decomp RLWE (including conversion)"
+#define EXTERN_PROD_MAT_MULT_TIME "External product mat mult (including conversion)"
 #define FST_NTT_TIME "First dim NTT"
-#define OTHER_NTT_TIME "Other dim NTT"
-#define DECOMP_RLWE_TIME "Decomp RLWE"
+#define EXTERN_NTT_TIME "External NTT"
+#define RIGHT_SHIFT_TIME "Right shift"
 #define FST_DELEY_MOD_TIME "First dim delay mod"
 
 
@@ -41,8 +42,9 @@
 const std::unordered_map<std::string, std::vector<std::string>> LOG_HIERARCHY = {
     {SERVER_TOT_TIME, {EXPAND_TIME, CONVERT_TIME, FST_DIM_TIME, OTHER_DIM_TIME}},
     {FST_DIM_TIME, {CORE_TIME, FST_DELEY_MOD_TIME, FST_NTT_TIME}},
-    {OTHER_DIM_TIME, {OTHER_NTT_TIME, EXTERN_PROD_TOT_TIME}},
-    {EXTERN_PROD_TOT_TIME, {DECOMP_RLWE_TIME, EXTERN_PROD_MAT_MULT_TIME}}
+    {OTHER_DIM_TIME, {EXTERN_PROD_TOT_TIME}},
+    {EXTERN_PROD_TOT_TIME, {DECOMP_RLWE_TIME, EXTERN_PROD_MAT_MULT_TIME}},
+    {DECOMP_RLWE_TIME, {EXTERN_NTT_TIME, RIGHT_SHIFT_TIME}}
 };
 
 

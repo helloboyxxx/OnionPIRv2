@@ -60,7 +60,11 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
   // Decomposing the BFV ciphertext to 2l polynomials. Transform to NTT form.
   std::vector<std::vector<uint64_t>> decomposed_bfv;
   TIME_START(DECOMP_RLWE_TIME);
-  decomp_rlwe(bfv, decomposed_bfv);
+  if (rns_mod_cnt == 1) {
+    decomp_rlwe_single_mod(bfv, decomposed_bfv);
+  } else {
+    decomp_rlwe(bfv, decomposed_bfv);
+  }
   TIME_END(DECOMP_RLWE_TIME);
 
   std::vector<std::vector<uint128_t>> result(
@@ -126,6 +130,7 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
 
     for (int p = l - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
+      TIME_START(RIGHT_SHIFT_TIME);
       for (size_t k = 0; k < coeff_count; k++) {
         auto ptr = row.data() + k * rns_mod_cnt;
         // ! This right shift is very time consuming. About 3 times slower than the actual external product multiplication.
@@ -135,13 +140,57 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
           ptr[i] = 0;
         }
       }
+      TIME_END(RIGHT_SHIFT_TIME);
       rns_base->decompose_array(row.data(), coeff_count, pool);
 
+      TIME_START(EXTERN_NTT_TIME);
       // transform to NTT form
       for (size_t i = 0; i < rns_mod_cnt; i++) {
         seal::util::ntt_negacyclic_harvey(row.data() + coeff_count * i, ntt_tables[i]);
       }
+      TIME_END(EXTERN_NTT_TIME);
+      output.emplace_back(std::move(row));
+    }
+  }
+}
 
+void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output) {
+  assert(output.size() == 0);
+  output.reserve(2 * l);
+
+  // Get parameters
+  const uint64_t base = uint64_t(1) << base_log2;
+  const uint64_t mask = base - 1;
+
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const auto &context_data = context->first_context_data();
+  const auto ntt_tables = context_data->small_ntt_tables();
+  constexpr size_t bits_per_uint64_sz = 64;
+
+  seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
+  auto pool = seal::MemoryManager::GetPool();
+
+  std::vector<uint64_t> data(coeff_count);
+
+  for (size_t poly_id = 0; poly_id < 2; poly_id++) {
+    const uint64_t *poly_ptr = ct.data(poly_id);
+    memcpy(data.data(), poly_ptr, coeff_count * sizeof(uint64_t));
+    rns_base->compose_array(data.data(), coeff_count, pool);
+
+    for (int p = l - 1; p >= 0; p--) {
+      std::vector<uint64_t> row = data;
+      const size_t shift_amount = p * base_log2;
+      TIME_START(RIGHT_SHIFT_TIME);
+      for (size_t k = 0; k < coeff_count; k++) {
+        row[k] = (row[k] >> shift_amount) & mask;
+      }
+      TIME_END(RIGHT_SHIFT_TIME);
+      rns_base->decompose_array(row.data(), coeff_count, pool);
+
+      // transform to NTT form
+      TIME_START(EXTERN_NTT_TIME);
+      seal::util::ntt_negacyclic_harvey(row.data(), ntt_tables[0]);
+      TIME_END(EXTERN_NTT_TIME);
       output.emplace_back(std::move(row));
     }
   }

@@ -32,6 +32,9 @@ public:
   */
   void decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
 
+
+  void decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
+
   /*!
     Generates a GSW ciphertext from a BFV ciphertext query.
 
