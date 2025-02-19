@@ -333,13 +333,13 @@ void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_
     }
   }
 
-  const auto bits_per_coeff = pir_params_.get_num_bits_per_coeff();
-  const auto num_bits_per_plaintext = pir_params_.get_num_bits_per_plaintext();
-  const auto num_entries_per_plaintext = pir_params_.get_num_entries_per_plaintext();
-  const auto num_plaintexts = pir_params_.get_num_pt();  // number of plaintexts in the new chunk
+  const size_t bits_per_coeff = pir_params_.get_num_bits_per_coeff();
+  const size_t num_bits_per_plaintext = pir_params_.get_num_bits_per_plaintext();
+  const size_t num_entries_per_plaintext = pir_params_.get_num_entries_per_plaintext();
+  const size_t num_plaintexts = pir_params_.get_num_pt();  // number of plaintexts in the new chunk
   const uint128_t coeff_mask = (uint128_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
-  const auto fst_dim_sz = pir_params_.get_fst_dim_sz();  // number of plaintexts in the first dimension
-  const auto chunk_offset = fst_dim_sz * chunk_idx;  // offset for the current chunk
+  const size_t fst_dim_sz = pir_params_.get_fst_dim_sz();  // number of plaintexts in the first dimension
+  const size_t chunk_offset = fst_dim_sz * chunk_idx;  // offset for the current chunk
 
   // Now we handle plaintexts one by one.
   for (size_t i = 0; i < num_plaintexts; i++) {

@@ -189,15 +189,12 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
 
 void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gsw_key,
                            GSWCiphertext &output) {
-  if (query.size() != l_) {
-    throw std::invalid_argument("The number of query ciphertexts is not equal to l.");
-  }
-  output.resize(query.size());
-
+  const size_t curr_l = query.size();
+  output.resize(curr_l);
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 
-  for (size_t i = 0; i < l_; i++) {
+  for (size_t i = 0; i < curr_l; i++) {
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
       output[i].push_back(query[i].data(0)[j]);
     }
@@ -206,14 +203,14 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
     }
   }
   gsw_ntt_negacyclic_harvey(output);
-  output.resize(2 * l_);
-  for (size_t i = 0; i < l_; i++) {
+  output.resize(2 * curr_l);
+  for (size_t i = 0; i < curr_l; i++) {
     external_product(gsw_key, query[i], query[i]);
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
-      output[i + l_].push_back(query[i].data(0)[j]);
+      output[i + curr_l].push_back(query[i].data(0)[j]);
     }
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
-      output[i + l_].push_back(query[i].data(1)[j]);
+      output[i + curr_l].push_back(query[i].data(1)[j]);
     }
   }
 }

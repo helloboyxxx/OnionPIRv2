@@ -5,7 +5,29 @@
 
 #include <cassert>
 
-PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_type::bfv)), context_(seal_params_) {
+// ================== helper functions ==================
+seal::EncryptionParameters PirParams::init_seal_params() {
+  // seal parameters requires at lest three parameters: poly_modulus_degree,
+  // coeff_modulus, plain_modulus Then the seal context will be set properly for
+  // encryption and decryption.
+
+  seal::EncryptionParameters params(seal::scheme_type::bfv);
+  params.set_poly_modulus_degree(
+      DatabaseConstants::PolyDegree); // example: a_1 x^4095 + a_2 x^4094 + ...
+
+  const uint64_t pt_mod = generate_prime(DatabaseConstants::PlainMod);
+  params.set_plain_modulus(pt_mod);
+  std::vector<int> bit_sizes(DatabaseConstants::CoeffModulus.begin(),
+                             DatabaseConstants::CoeffModulus.end());
+  const auto coeff_modulus =
+      CoeffModulus::Create(DatabaseConstants::PolyDegree, bit_sizes);
+  params.set_coeff_modulus(coeff_modulus);
+
+  return params;
+}
+
+PirParams::PirParams()
+    : seal_params_(init_seal_params()), context_(seal_params_) {
   // =============== Setting modulus ===============
   const uint64_t pt_mod = generate_prime(DatabaseConstants::PlainMod);
   // calculate the entry size in bytes automatically.
@@ -14,20 +36,9 @@ PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_ty
   } else {
     entry_size_ = DatabaseConstants::EntrySize;
   }
-  // seal parameters requires at lest three parameters: poly_modulus_degree,
-  // coeff_modulus, plain_modulus Then the seal context will be set properly for
-  // encryption and decryption.
-  seal_params_.set_poly_modulus_degree(
-      DatabaseConstants::PolyDegree); // example: a_1 x^4095 + a_2 x^4094 + ...
-
-  std::vector<int> bit_sizes(DatabaseConstants::CoeffModulus.begin(),
-                             DatabaseConstants::CoeffModulus.end());
-  auto coeff_modulus = CoeffModulus::Create(DatabaseConstants::PolyDegree, bit_sizes);
-  seal_params_.set_coeff_modulus(coeff_modulus);
-  seal_params_.set_plain_modulus(pt_mod);
 
   // ================== GSW related parameters ==================
-  
+  const auto coeff_modulus = seal_params_.coeff_modulus();
   size_t bits = 0; // will store log(q) in bits
   for (size_t i = 0; i < coeff_modulus.size() - 1; i++) {
     bits += coeff_modulus[i].bit_count();

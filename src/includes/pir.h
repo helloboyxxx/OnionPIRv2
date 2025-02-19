@@ -74,4 +74,11 @@ private:
   seal::EncryptionParameters seal_params_;
   seal::SEALContext context_;
 
+
+
+
+  // ================== helper functions ==================
+  seal::EncryptionParameters init_seal_params();
+
+
 };
