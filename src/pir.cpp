@@ -1,11 +1,11 @@
 #include "pir.h"
 #include "database_constants.h"
-#include "external_prod.h"
+#include "gsw_eval.h"
 #include "utils.h"
 
 #include <cassert>
 
-PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_type::bfv)) {
+PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_type::bfv)), context_(seal_params_) {
   // =============== Setting modulus ===============
   const uint64_t pt_mod = generate_prime(DatabaseConstants::PlainMod);
   // calculate the entry size in bytes automatically.
@@ -37,15 +37,7 @@ PirParams::PirParams() : seal_params_(seal::EncryptionParameters(seal::scheme_ty
   // given context. See analysis folder. This line rounds bits/l up to the
   // nearest integer.
   base_log2_ = (bits + l_ - 1) / l_;
-  // Set up parameters for GSW in external_prod.h
-  data_gsw.l = l_;
-  data_gsw.base_log2 = base_log2_;
-  data_gsw.context = new seal::SEALContext(seal_params_);
-
-  // The l used for RGSW(s) in algorithm 4.
-  key_gsw.l = l_key_;
-  key_gsw.base_log2 = (bits + l_key_ - 1) / l_key_; // same calculation method
-  key_gsw.context = data_gsw.context;
+  base_log2_key_ = (bits + l_key_ - 1) / l_key_;
 
   // ================== VALIDATION ==================
 

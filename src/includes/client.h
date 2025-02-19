@@ -4,7 +4,7 @@
 class PirClient {
 public:
   PirClient(const PirParams &pirparms);
-  ~PirClient();
+  ~PirClient() = default;
 
   /**
   This is the core function for the client.
@@ -20,9 +20,8 @@ public:
   PirQuery generate_query(const std::uint64_t entry_index);
   size_t write_query_to_stream(const PirQuery &query, std::stringstream &data_stream);
   size_t write_gsw_to_stream(const std::vector<Ciphertext> &gsw, std::stringstream &gsw_stream);
-  size_t create_galois_keys(std::stringstream &galois_key_stream) const;
-  std::vector<seal::Plaintext> decrypt_result(std::vector<seal::Ciphertext> reply);
-  seal::Decryptor *get_decryptor();
+  size_t create_galois_keys(std::stringstream &galois_key_stream);
+  std::vector<seal::Plaintext> decrypt_result(const std::vector<seal::Ciphertext> reply);
   // Retrieves an entry from the plaintext containing the entry.
   std::vector<Ciphertext> generate_gsw_from_key();
   // The height of the expansion tree during packing unpacking stages
@@ -30,20 +29,19 @@ public:
     return std::ceil(std::log2(dims_[0] + pir_params_.get_l() * (dims_.size() - 1)));
   }
   
-  Entry get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext);
-  uint32_t get_client_id() const;
+  Entry get_entry_from_plaintext(const size_t entry_index, const seal::Plaintext plaintext) const;
+  inline uint32_t get_client_id() const { return client_id_; }
 
 private:
   uint32_t client_id_;
-  seal::EncryptionParameters enc_params_;
+  seal::SEALContext context_;
+  seal::KeyGenerator keygen_;
+  seal::SecretKey secret_key_;
+  seal::Decryptor decryptor_;
+  seal::Encryptor encryptor_;
+  seal::Evaluator evaluator_;
   PirParams pir_params_;
   std::vector<size_t> dims_;
-  seal::KeyGenerator *keygen_;
-  seal::Decryptor *decryptor_;
-  seal::Encryptor *encryptor_;
-  seal::Evaluator *evaluator_;
-  seal::SEALContext *context_;
-  const seal::SecretKey *secret_key_;
   
   // Gets the corresponding plaintext index in a database for a given entry index
   size_t get_database_plain_index(size_t entry_index);

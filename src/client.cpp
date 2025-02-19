@@ -1,45 +1,34 @@
 #include "client.h"
-#include "external_prod.h"
 #include "pir.h"
 #include "utils.h"
+#include "gsw_eval.h"
 
 
+// constructor
 PirClient::PirClient(const PirParams &pir_params)
-    : enc_params_(pir_params.get_seal_params()),
-      dims_(pir_params.get_dims()), pir_params_(pir_params) {
-  context_ = new seal::SEALContext(enc_params_);
-  evaluator_ = new seal::Evaluator(*context_);
-  keygen_ = new seal::KeyGenerator(*context_);
-  secret_key_ = &keygen_->secret_key();
-  encryptor_ = new seal::Encryptor(*context_, *secret_key_);
-  decryptor_ = new seal::Decryptor(*context_, *secret_key_);
+    : client_id_(0), context_(pir_params.get_seal_params()), keygen_(context_),
+      secret_key_(keygen_.secret_key()), decryptor_(context_, secret_key_),
+      encryptor_(context_, secret_key_), evaluator_(context_),
+      pir_params_(pir_params), dims_(pir_params.get_dims()) {
+  // set the client id to 0
+  client_id_ = rand();
 }
-
-PirClient::~PirClient() {
-  delete context_;
-  delete evaluator_;
-  delete keygen_;
-  delete encryptor_;
-  delete decryptor_;
-}
-
-seal::Decryptor *PirClient::get_decryptor() { return decryptor_; }
 
 std::vector<Ciphertext> PirClient::generate_gsw_from_key() {
   std::vector<seal::Ciphertext> gsw_enc; // temporary GSW ciphertext using seal::Ciphertext
-  const auto sk_ = secret_key_->data();
-  const auto ntt_tables = context_->first_context_data()->small_ntt_tables();
-  const auto coeff_modulus = context_->first_context_data()->parms().coeff_modulus();
-  const auto rns_mod_cnt = coeff_modulus.size();
-  const auto coeff_count = enc_params_.poly_modulus_degree();
-  std::vector<uint64_t> sk_ntt(enc_params_.poly_modulus_degree() * rns_mod_cnt);
+  const auto sk_ = secret_key_.data();
+  const auto ntt_tables = context_.first_context_data()->small_ntt_tables();
+  const auto rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const auto coeff_count = DatabaseConstants::PolyDegree;
+  std::vector<uint64_t> sk_ntt(coeff_count * rns_mod_cnt);
 
   memcpy(sk_ntt.data(), sk_.data(), coeff_count * rns_mod_cnt * sizeof(uint64_t));
 
   RNSIter secret_key_iter(sk_ntt.data(), coeff_count);
   inverse_ntt_negacyclic_harvey(secret_key_iter, rns_mod_cnt, ntt_tables);
 
-  key_gsw.encrypt_plain_to_gsw(sk_ntt, *encryptor_, *secret_key_, gsw_enc);
+  GSWEval key_gsw(pir_params_, pir_params_.get_l_key(), pir_params_.get_base_log2_key());
+  key_gsw.encrypt_plain_to_gsw(sk_ntt, encryptor_, secret_key_, gsw_enc);
   return gsw_enc;
 }
 
@@ -83,7 +72,7 @@ PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
   // We set the corresponding coefficient to the inverse so the value of the
   // expanded ciphertext will be 1
   uint64_t inverse = 0;
-  const uint64_t plain_modulus = enc_params_.plain_modulus().value(); // example: 16777259
+  const uint64_t plain_modulus = pir_params_.get_plain_mod();
   seal::util::try_invert_uint_mod(bits_per_ciphertext, plain_modulus, inverse);
 
   // Add the first dimension query vector to the query
@@ -91,13 +80,12 @@ PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
   
   // Encrypt plain_query first. Later we will insert the rest. $\tilde c$ in paper
   PirQuery query;
-  encryptor_->encrypt_symmetric_seeded(plain_query, query);
+  encryptor_.encrypt_symmetric_seeded(plain_query, query);
 
   const auto l = pir_params_.get_l();
   const auto base_log2 = pir_params_.get_base_log2();
-  const auto context_data = context_->first_context_data();
-  const auto coeff_modulus = context_data->parms().coeff_modulus();
-  const auto rns_mod_cnt = coeff_modulus.size();  // 2 here, not 3. Notice that here we use the first context_data, not all of coeff_modulus are used.
+  const auto coeff_modulus = pir_params_.get_coeff_modulus();
+  const auto rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 
   // The following two for-loops calculates the powers for GSW gadgets.
   std::vector<uint128_t> inv(rns_mod_cnt);
@@ -151,32 +139,32 @@ size_t PirClient::write_gsw_to_stream(const std::vector<Ciphertext> &gsw, std::s
   return total_size;
 }
 
-size_t PirClient::create_galois_keys(std::stringstream &galois_key_stream) const {
+size_t PirClient::create_galois_keys(std::stringstream &galois_key_stream) {
   std::vector<uint32_t> galois_elts;
 
   // This is related to the unpacking algorithm.
   // expansion height is the height of the expansion tree such that
   // 2^get_expan_height() is equal to the number of packed values padded to the next power of 2.
   const size_t expan_height = get_expan_height();
-  const size_t poly_degree = enc_params_.poly_modulus_degree();
+  const size_t poly_degree = DatabaseConstants::PolyDegree;
   for (size_t i = 0; i < expan_height; i++) {
     galois_elts.push_back(1 + (poly_degree >> i));
   }
   // PRINT_INT_ARRAY("galois_elts: ", galois_elts, galois_elts.size());
-  auto written_size = keygen_->create_galois_keys(galois_elts).save(galois_key_stream);
+  auto written_size = keygen_.create_galois_keys(galois_elts).save(galois_key_stream);
   return written_size;
 }
 
-std::vector<seal::Plaintext> PirClient::decrypt_result(std::vector<seal::Ciphertext> reply) {
-  std::vector<seal::Plaintext> result(reply.size(), seal::Plaintext(enc_params_.poly_modulus_degree()));
+std::vector<seal::Plaintext> PirClient::decrypt_result(const std::vector<seal::Ciphertext> reply) {
+  std::vector<seal::Plaintext> result(reply.size(), seal::Plaintext(DatabaseConstants::PolyDegree));
   for (size_t i = 0; i < reply.size(); i++) {
-    decryptor_->decrypt(reply[i], result[i]);
+    decryptor_.decrypt(reply[i], result[i]);
   }
 
   return result;
 }
 
-Entry PirClient::get_entry_from_plaintext(size_t entry_index, seal::Plaintext plaintext) {
+Entry PirClient::get_entry_from_plaintext(const size_t entry_index, const seal::Plaintext plaintext) const {
   // Offset in the plaintext in bits
   const size_t start_position_in_plaintext = (entry_index % pir_params_.get_num_entries_per_plaintext()) *
                                        pir_params_.get_entry_size() * 8;
@@ -210,6 +198,4 @@ Entry PirClient::get_entry_from_plaintext(size_t entry_index, seal::Plaintext pl
 
   return result;
 }
-
-uint32_t PirClient::get_client_id() const { return client_id_; }
 

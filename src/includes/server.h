@@ -1,6 +1,6 @@
 #pragma once
 
-#include "external_prod.h"
+#include "gsw_eval.h"
 #include "pir.h"
 #include <optional>
 
@@ -9,7 +9,6 @@
 // typedef std::vector<std::optional<seal::Plaintext>> DatabaseChunk;  // 256 plaintexts
 typedef std::unique_ptr<std::optional<seal::Plaintext>[]> DatabaseChunk;  // Heap allocation for N_1 plaintexts
 typedef std::unique_ptr<std::optional<seal::Plaintext>[]> Database;       // One consecutive huge vector for the entire database on heap
-typedef std::pair<uint64_t, uint64_t> CuckooSeeds;
 
 class PirServer {
 public:
@@ -21,13 +20,6 @@ public:
    * It pushes the data to the database in chunks.
    */
   void gen_data();
-
-  /**
-   * @brief Generate random key-value pairs, configured using hashed_key_width_. 
-   * Then set the database by inserting the key-value pairs using cuckoo hashing.
-   * @return a copy of the generated database and all used seeds. The last pair of CuckooSeeds is the seeds used for the cuckoo hash.
-   */
-  std::vector<CuckooSeeds> gen_keyword_data(size_t max_iter, uint64_t keyword_seed);
 
   // push one chunk of entry to the given database
   void push_database_chunk(std::vector<Entry> &chunk_entry, const size_t chunk_idx);
@@ -60,10 +52,6 @@ public:
   */
   Entry direct_get_entry(const uint64_t index);
 
-  seal::Decryptor *decryptor_;
-
-  friend class PirTest;
-
 private:
   size_t num_pt_;
   seal::SEALContext context_;
@@ -72,8 +60,11 @@ private:
   std::map<uint32_t, seal::GaloisKeys> client_galois_keys_;
   std::map<uint32_t, GSWCiphertext> client_gsw_keys_;
   Database db_; // pointer to the entire database vector
-  std::vector<uint128_t> inter_res; // pointer to the intermediate result vector for fst dim
+  std::vector<uint64_t> db_aligned_; // aligned database for fast first dim
+  std::vector<uint128_t> inter_res_; // pointer to the intermediate result vector for fst dim
   PirParams pir_params_;
+  GSWEval key_gsw_;
+  GSWEval data_gsw_;
 
   /*!
     Expands the first query ciphertext into a selection vector of ciphertexts
@@ -90,6 +81,8 @@ private:
     This speeds up computation but takes up more memory.
   */
   void preprocess_ntt();
+
+  void realign_db();
 
   // Fill the intermediate_db_ with some ciphertext. We just need to allocate the memory.
   void fill_inter_res();

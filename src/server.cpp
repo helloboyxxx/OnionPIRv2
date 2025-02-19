@@ -1,5 +1,5 @@
 #include "server.h"
-#include "external_prod.h"
+#include "gsw_eval.h"
 #include "utils.h"
 #include <cassert>
 #include <cstdlib>
@@ -12,12 +12,15 @@
 // client_galois_keys_, client_gsw_keys_, and db_ are not set yet.
 PirServer::PirServer(const PirParams &pir_params)
     : pir_params_(pir_params), context_(pir_params.get_seal_params()),
-      num_pt_(pir_params.get_num_pt()), evaluator_(context_), dims_(pir_params.get_dims()) {
+      num_pt_(pir_params.get_num_pt()), evaluator_(context_), dims_(pir_params.get_dims()),
+      key_gsw_(pir_params, pir_params.get_l_key(), pir_params.get_base_log2_key()),
+      data_gsw_(pir_params, pir_params.get_l(), pir_params.get_base_log2()) {
   // delete the raw_db_file if it exists
   std::remove(RAW_DB_FILE);
 
   // allocate enough space for the database, init with std::nullopt
   db_ = std::make_unique<std::optional<seal::Plaintext>[]>(num_pt_);
+  db_aligned_.reserve(num_pt_ * pir_params.get_coeff_val_cnt());
   fill_inter_res();
 }
 
@@ -58,6 +61,7 @@ void PirServer::gen_data() {
   // transform the ntt_db_ from coefficient form to ntt form. db_ is not transformed.
   BENCH_PRINT("\nTransforming the database to NTT form...");
   preprocess_ntt();
+  // realign_db();
 }
 
 
@@ -70,8 +74,8 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   const size_t other_dim_sz = pir_params_.get_other_dim_sz();  // number of plaintexts in the other dimensions
   const auto seal_params = context_.get_context_data(fst_dim_query[0].parms_id())->parms();
   const auto coeff_modulus = seal_params.coeff_modulus();
-  const size_t rns_mod_cnt = coeff_modulus.size();
-  const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * rns_mod_cnt; // polydegree * RNS moduli count
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t coeff_val_cnt = pir_params_.get_coeff_val_cnt(); // polydegree * RNS moduli count
   const size_t one_ct_sz = 2 * coeff_val_cnt; // Ciphertext has two polynomials
 
   // transform the selection vector to ntt form
@@ -80,7 +84,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   }
 
   // fill the intermediate result with zeros
-  std::fill(inter_res.begin(), inter_res.end(), 0);
+  std::fill(inter_res_.begin(), inter_res_.end(), 0);
 
   /*
   I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
@@ -102,8 +106,8 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
       db_ptr = db_[row * fst_dim_sz + col].value().data();
       q0 = fst_dim_query[col].data(0); // query polynomial 0
       q1 = fst_dim_query[col].data(1); // query polynomial 1
-      inter_ptr0 = inter_res.data() + row * one_ct_sz; // intermediate result ptr for polynomial 0
-      inter_ptr1 = inter_res.data() + row * one_ct_sz + coeff_val_cnt;
+      inter_ptr0 = inter_res_.data() + row * one_ct_sz; // intermediate result ptr for polynomial 0
+      inter_ptr1 = inter_res_.data() + row * one_ct_sz + coeff_val_cnt;
       #pragma GCC unroll 32
       for (elem_id = 0; elem_id < coeff_val_cnt; ++elem_id) {
         inter_ptr0[elem_id] += static_cast<uint128_t>(q0[elem_id]) * db_ptr[elem_id];
@@ -124,7 +128,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
     for (size_t poly_id = 0; poly_id < 2; poly_id++) {   // Each ciphertext has two polynomials
       auto mod_acc_ptr = ct_acc.data(poly_id); // pointer to store the modulus of accumulated value
       auto inter_shift = j * one_ct_sz + poly_id * coeff_val_cnt;
-      auto buff_ptr = inter_res.data() + inter_shift;
+      auto buff_ptr = inter_res_.data() + inter_shift;
       
       for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {  // RNS has two moduli
         // Now we calculate the modulus for the accumulated value.
@@ -166,7 +170,7 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
     auto &y = result[i + block_size];
     evaluator_.sub_inplace(y, x);  // y - x
     TIME_START(EXTERN_PROD_TOT_TIME);
-    data_gsw.external_product(selection_cipher, y, y);  // b * (y - x)
+    data_gsw_.external_product(selection_cipher, y, y);  // b * (y - x)
     TIME_END(EXTERN_PROD_TOT_TIME);
     y.is_ntt_form() = true;
     evaluator_.transform_from_ntt_inplace(y);
@@ -232,8 +236,8 @@ void PirServer::set_client_gsw_key(const uint32_t client_id, std::stringstream &
   }
   GSWCiphertext gsw_key;
 
-  key_gsw.sealGSWVecToGSW(gsw_key, temp_gsw);
-  key_gsw.gsw_ntt_negacyclic_harvey(gsw_key); // transform the GSW ciphertext to NTT form
+  key_gsw_.sealGSWVecToGSW(gsw_key, temp_gsw);
+  key_gsw_.gsw_ntt_negacyclic_harvey(gsw_key); // transform the GSW ciphertext to NTT form
 
   client_gsw_keys_[client_id] = gsw_key;
 }
@@ -276,7 +280,7 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
         lwe_vector.push_back(query_vector[ptr]);
       }
       // Converting the BFV ciphertext to GSW ciphertext
-      key_gsw.query_to_gsw(lwe_vector, client_gsw_keys_[client_id], gsw_vec[i - 1]);
+      key_gsw_.query_to_gsw(lwe_vector, client_gsw_keys_[client_id], gsw_vec[i - 1]);
     }
   }
   TIME_END(CONVERT_TIME);
@@ -316,7 +320,6 @@ std::vector<seal::Ciphertext> PirServer::make_seeded_query(const uint32_t client
 
 
 void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_t chunk_idx) {
-
   // Flattens data into vector of u8s and pads each entry with 0s to entry_size number of bytes.
   // This is actually resizing from entry.size() to pir_params_.get_entry_size()
   // This is redundent if the given entries uses the same pir parameters.
@@ -333,9 +336,8 @@ void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_
   const auto bits_per_coeff = pir_params_.get_num_bits_per_coeff();
   const auto num_bits_per_plaintext = pir_params_.get_num_bits_per_plaintext();
   const auto num_entries_per_plaintext = pir_params_.get_num_entries_per_plaintext();
-  const auto num_plaintexts = chunk_entry.size() / num_entries_per_plaintext;  // number of plaintexts in the new chunk
+  const auto num_plaintexts = pir_params_.get_num_pt();  // number of plaintexts in the new chunk
   const uint128_t coeff_mask = (uint128_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
-  
   const auto fst_dim_sz = pir_params_.get_fst_dim_sz();  // number of plaintexts in the first dimension
   const auto chunk_offset = fst_dim_sz * chunk_idx;  // offset for the current chunk
 
@@ -402,13 +404,13 @@ void PirServer::fill_inter_res() {
   // However, in the first dimension, we want to store them in uint128_t.
   // So, we need to calculate the number of uint128_t we need to store.
   // number of rns modulus
-  auto num_mods = pir_params_.get_ct_coeff_mod_cnt();
+  auto num_mods = pir_params_.get_rns_mod_cnt();
   DEBUG_PRINT("Number of RNS moduli: " << num_mods);
   auto other_dim_sz = pir_params_.get_other_dim_sz();
   // number of uint128_t we need to store in the intermediate result
   auto elem_cnt = other_dim_sz * DatabaseConstants::PolyDegree * num_mods * 2;
   // allocate memory for the intermediate result
-  inter_res.resize(elem_cnt);
+  inter_res_.resize(elem_cnt);
 }
 
 void PirServer::write_one_chunk(std::vector<Entry> &data) {

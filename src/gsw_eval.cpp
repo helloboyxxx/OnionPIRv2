@@ -1,4 +1,4 @@
-#include "external_prod.h"
+#include "gsw_eval.h"
 #include "utils.h"
 #include "seal/util/rlwe.h"
 #include "logging.h"
@@ -11,15 +11,12 @@
 // multiplication, assuming that both the GSWCiphertext and decomposed bfv is in
 // polynomial coefficient representation.
 
-GSWEval data_gsw, key_gsw;
 
 void GSWEval::gsw_ntt_negacyclic_harvey(GSWCiphertext &gsw) {
-  const auto &context_data = context->first_context_data();
-  auto &parms2 = context->first_context_data()->parms();
-  auto &coeff_modulus = parms2.coeff_modulus();
-  size_t coeff_count = parms2.poly_modulus_degree();
-  size_t rns_mod_cnt = coeff_modulus.size();
-  auto ntt_tables = context_data->small_ntt_tables();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const auto context = pir_params_.get_context();
+  auto ntt_tables = context.first_context_data()->small_ntt_tables();
 
   for (auto &poly : gsw) {
     seal::util::CoeffIter gsw_poly_ptr(poly.data());
@@ -34,12 +31,10 @@ void GSWEval::gsw_ntt_negacyclic_harvey(GSWCiphertext &gsw) {
 }
 
 void GSWEval::ciphertext_inverse_ntt(seal::Ciphertext &ct) {
-  const auto &context_data = context->first_context_data();
-  auto &parms2 = context_data->parms();
-  auto &coeff_modulus = parms2.coeff_modulus();
-  size_t coeff_count = parms2.poly_modulus_degree();
-  size_t rns_mod_cnt = coeff_modulus.size();
-  auto ntt_tables = context_data->small_ntt_tables();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const auto &context = pir_params_.get_context();
+  auto ntt_tables = context.first_context_data()->small_ntt_tables();
 
   for (size_t i = 0; i < rns_mod_cnt; i++) {
     seal::util::inverse_ntt_negacyclic_harvey(ct.data(0) + coeff_count * i, *(ntt_tables + i));
@@ -51,9 +46,7 @@ void GSWEval::ciphertext_inverse_ntt(seal::Ciphertext &ct) {
 
 void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext const &bfv,
                               seal::Ciphertext &res_ct) {
-
-  const auto &coeff_modulus = context->first_context_data()->parms().coeff_modulus();
-  const size_t rns_mod_cnt = coeff_modulus.size();  // rns mod count
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const size_t coeff_val_cnt = DatabaseConstants::PolyDegree * rns_mod_cnt; // polydegree * RNS moduli count
 
@@ -73,7 +66,7 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
   TIME_START(EXTERN_PROD_MAT_MULT_TIME);
   // matrix multiplication: decomp(bfv) * gsw = (1 x 2l) * (2l x 2) = (1 x 2)
   for (size_t k = 0; k < 2; ++k) {
-    for (size_t j = 0; j < 2 * l; j++) {
+    for (size_t j = 0; j < 2 * l_; j++) {
       seal::util::ConstCoeffIter encrypted_gsw_ptr(gsw_enc[j].data() + k * coeff_val_cnt);
       seal::util::ConstCoeffIter encrypted_rlwe_ptr(decomposed_bfv[j]);
       #pragma GCC unroll 32
@@ -85,6 +78,7 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
   TIME_END(EXTERN_PROD_MAT_MULT_TIME);
 
   // taking mods.
+  const auto coeff_modulus = pir_params_.get_coeff_modulus();
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     auto ct_ptr = res_ct.data(poly_id);
     auto pt_ptr = result[poly_id];
@@ -101,40 +95,35 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
 }
 
 void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output) {
-
   assert(output.size() == 0);
-  output.reserve(2 * l);
+  output.reserve(2 * l_);
 
-  // Get parameters
-  const uint128_t base = uint128_t(1) << base_log2;
+  // Setup parameters
+  const uint128_t base = uint128_t(1) << base_log2_;
   const uint128_t mask = base - 1;
-
-  const auto &context_data = context->first_context_data();
-  const auto &parms = context_data->parms();
-  const auto &coeff_modulus = parms.coeff_modulus();
-  const size_t coeff_count = parms.poly_modulus_degree();
-  const size_t rns_mod_cnt = coeff_modulus.size();
-  const auto ntt_tables = context_data->small_ntt_tables();
-
-
+  const auto &coeff_modulus = pir_params_.get_coeff_modulus();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const auto &context = pir_params_.get_context();
+  const auto context_data = context.first_context_data();
+  auto ntt_tables = context_data->small_ntt_tables();
   seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
   auto pool = seal::MemoryManager::GetPool();
 
   std::vector<uint64_t> data(coeff_count * rns_mod_cnt);
-
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     const uint64_t *poly_ptr = ct.data(poly_id);
 
     memcpy(data.data(), poly_ptr, coeff_count * rns_mod_cnt * sizeof(uint64_t));
     rns_base->compose_array(data.data(), coeff_count, pool);
 
-    for (int p = l - 1; p >= 0; p--) {
+    for (int p = l_ - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
       TIME_START(RIGHT_SHIFT_TIME);
       for (size_t k = 0; k < coeff_count; k++) {
         auto ptr = row.data() + k * rns_mod_cnt;
         // ! This right shift is very time consuming. About 3 times slower than the actual external product multiplication.
-        seal::util::right_shift_uint(ptr, p * base_log2, rns_mod_cnt, ptr); // shift right by p * base_log2
+        seal::util::right_shift_uint(ptr, p * base_log2_, rns_mod_cnt, ptr); // shift right by p * base_log2
         ptr[0] &= mask;
         for (size_t i = 1; i < rns_mod_cnt; i++) {
           ptr[i] = 0;
@@ -155,15 +144,17 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
 }
 
 void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output) {
+
   assert(output.size() == 0);
-  output.reserve(2 * l);
+  output.reserve(2 * l_);
 
   // Get parameters
-  const uint64_t base = uint64_t(1) << base_log2;
+  const uint64_t base = uint64_t(1) << base_log2_;
   const uint64_t mask = base - 1;
 
   const size_t coeff_count = DatabaseConstants::PolyDegree;
-  const auto &context_data = context->first_context_data();
+  const auto &context = pir_params_.get_context();
+  const auto &context_data = context.first_context_data();
   const auto ntt_tables = context_data->small_ntt_tables();
   constexpr size_t bits_per_uint64_sz = 64;
 
@@ -177,9 +168,9 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
     memcpy(data.data(), poly_ptr, coeff_count * sizeof(uint64_t));
     rns_base->compose_array(data.data(), coeff_count, pool);
 
-    for (int p = l - 1; p >= 0; p--) {
+    for (int p = l_ - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
-      const size_t shift_amount = p * base_log2;
+      const size_t shift_amount = p * base_log2_;
       TIME_START(RIGHT_SHIFT_TIME);
       for (size_t k = 0; k < coeff_count; k++) {
         row[k] = (row[k] >> shift_amount) & mask;
@@ -198,17 +189,15 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
 
 void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gsw_key,
                            GSWCiphertext &output) {
-  size_t cl = query.size();
-  assert(output.size() == 0);
-  output.resize(cl);
+  if (query.size() != l_) {
+    throw std::invalid_argument("The number of query ciphertexts is not equal to l.");
+  }
+  output.resize(query.size());
 
-  const auto &context_data = context->get_context_data(query[0].parms_id());
-  auto &parms = context_data->parms();
-  auto &coeff_modulus = parms.coeff_modulus();
-  size_t coeff_count = parms.poly_modulus_degree();
-  size_t rns_mod_cnt = coeff_modulus.size();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 
-  for (size_t i = 0; i < cl; i++) {
+  for (size_t i = 0; i < l_; i++) {
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
       output[i].push_back(query[i].data(0)[j]);
     }
@@ -217,14 +206,14 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
     }
   }
   gsw_ntt_negacyclic_harvey(output);
-  output.resize(2 * cl);
-  for (size_t i = 0; i < cl; i++) {
+  output.resize(2 * l_);
+  for (size_t i = 0; i < l_; i++) {
     external_product(gsw_key, query[i], query[i]);
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
-      output[i + cl].push_back(query[i].data(0)[j]);
+      output[i + l_].push_back(query[i].data(0)[j]);
     }
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
-      output[i + cl].push_back(query[i].data(1)[j]);
+      output[i + l_].push_back(query[i].data(1)[j]);
     }
   }
 }
@@ -236,7 +225,7 @@ void GSWEval::encrypt_plain_to_gsw(std::vector<uint64_t> const &plaintext,
   output.clear();
   // when poly_id = 0, we are working on the first half of the GSWCiphertext
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
-    for (size_t k = 0; k < l; k++) {
+    for (size_t k = 0; k < l_; k++) {
       seal::Ciphertext cipher =
           enc_plain_to_gsw_one_row(plaintext, encryptor, sk, poly_id, k);
       output.push_back(cipher);
@@ -251,14 +240,15 @@ GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
                                   const size_t level) {
 
   // Accessing context data within this function instead of passing these parameters
-  const auto &parms = context->first_context_data()->parms();
-  const size_t coeff_count = parms.poly_modulus_degree();
-  const auto &coeff_modulus = parms.coeff_modulus();
+  const auto &context = pir_params_.get_context();
+  const auto &params = context.first_context_data()->parms();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const auto &coeff_modulus = pir_params_.get_coeff_modulus();
   const size_t rns_mod_cnt = coeff_modulus.size();
   assert(plaintext.size() == coeff_count * rns_mod_cnt || plaintext.size() == coeff_count);
 
   // Create RGSW gadget.
-  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l, base_log2, rns_mod_cnt, coeff_modulus);
+  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
 
   // ================== Second half of the seeded GSW ==================
   if (half == 1) {
@@ -268,8 +258,8 @@ GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
     for (size_t i = 0; i < rns_mod_cnt; i++) {
       col.push_back(gadget[i][level]);
     }
-    seal::util::prepare_seeded_gsw_key(sk, col, *context,
-                                       parms.parms_id(), false, cipher);
+    seal::util::prepare_seeded_gsw_key(sk, col, context,
+                                       params.parms_id(), false, cipher);
     return cipher;
   }
 
@@ -304,11 +294,8 @@ GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
 }
 
 void GSWEval::sealGSWVecToGSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec) {
-  const auto &context_data = context->first_context_data();
-  auto &parms = context_data->parms();
-  auto &coeff_modulus = parms.coeff_modulus();
-  size_t coeff_count = parms.poly_modulus_degree();
-  size_t rns_mod_cnt = coeff_modulus.size();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 
   output.clear();
   for (auto &ct : gsw_vec) {

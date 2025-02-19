@@ -19,6 +19,8 @@ typedef uint64_t Key; // key in the key-value pair.
 class PirParams {
 public:
   PirParams();
+  // copy constructor
+  PirParams(const PirParams &pir_params) = default;
 
   // ================== getters ==================
   /**
@@ -35,6 +37,7 @@ public:
   size_t get_num_bits_per_plaintext() const;
 
   inline seal::EncryptionParameters get_seal_params() const { return seal_params_; }
+  inline seal::SEALContext get_context() const { return context_; }
   inline double get_DBSize_MB() const { return static_cast<double>(num_entries_) * entry_size_ / 1024 / 1024; }
   inline size_t get_num_entries() const { return num_entries_; }
   inline size_t get_num_pt() const { return num_pt_; }
@@ -43,12 +46,18 @@ public:
   inline size_t get_l() const { return l_; }
   inline size_t get_l_key() const { return l_key_; }
   inline size_t get_base_log2() const { return base_log2_; }
+  inline size_t get_base_log2_key() const { return base_log2_key_; }
   // In terms of number of plaintexts
   inline size_t get_fst_dim_sz() const { return dims_[0]; }
   // In terms of number of plaintexts
   // when other_dim_sz == 1, it means we only use the first dimension.
   inline size_t get_other_dim_sz() const { return num_pt_ / dims_[0]; }
-  inline size_t get_ct_coeff_mod_cnt() const { return seal_params_.coeff_modulus().size() - 1; }
+  inline size_t get_rns_mod_cnt() const { return seal_params_.coeff_modulus().size() - 1; }
+  inline size_t get_coeff_val_cnt() const { return DatabaseConstants::PolyDegree * get_rns_mod_cnt(); }
+  inline uint64_t get_plain_mod() const { return seal_params_.plain_modulus().value(); }
+  inline std::vector<Modulus> get_coeff_modulus() const {
+    return context_.first_context_data()->parms().coeff_modulus();
+  }
 
   // ================== information related ==================
   void print_params() const;
@@ -56,11 +65,13 @@ public:
 private:
   static constexpr size_t l_ = DatabaseConstants::GSW_L;                  // l for GSW
   static constexpr size_t l_key_ = DatabaseConstants::GSW_L_KEY;          // l for GSW key
+  size_t base_log2_;         // log of base for data RGSW
+  size_t base_log2_key_;     // log of base for key RGSW
   size_t num_entries_ = DatabaseConstants::NumEntries;  // number of entries in the database. Will be padded to multiples of other dimension size.
   size_t num_pt_;            // number of plaintexts in the database
   size_t entry_size_;    // size of each entry in bytes
-  size_t base_log2_;         // log of base for RGSW
   std::vector<size_t> dims_; // Number of dimensions
   seal::EncryptionParameters seal_params_;
+  seal::SEALContext context_;
 
 };
