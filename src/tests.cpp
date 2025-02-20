@@ -57,7 +57,7 @@ void test_pir() {
     // ============= OFFLINE PHASE ==============
     // Initialize the client
     PirClient client(pir_params);
-    const uint32_t client_id = client.get_client_id();
+    const size_t client_id = client.get_client_id();
     std::stringstream galois_key_stream, gsw_stream, data_stream;
 
     // Client create galois keys and gsw keys and writes to the stream (to the server)
@@ -81,7 +81,7 @@ void test_pir() {
     
     // ============= SERVER ===============
     TIME_START(SERVER_TOT_TIME);
-    auto result = server.make_seeded_query(client_id, data_stream);
+    auto result = server.make_query(client_id, data_stream);
     TIME_END(SERVER_TOT_TIME);
 
     // ============= CLIENT ===============

@@ -27,7 +27,7 @@ void utils::negacyclic_shift_poly_coeffmod(seal::util::ConstCoeffIter poly, size
 void utils::shift_polynomial(seal::EncryptionParameters &params, seal::Ciphertext &encrypted,
                              seal::Ciphertext &destination, size_t index) {
   const auto encrypted_count = encrypted.size();
-  const auto coeff_count = params.poly_modulus_degree();
+  const auto coeff_count = DatabaseConstants::PolyDegree;
   const auto rns_mod_cnt = params.coeff_modulus().size() - 1;
   destination = encrypted;
   for (size_t i = 0; i < encrypted_count; i++) {
@@ -162,23 +162,6 @@ bool entry_is_equal(const Entry &entry1, const Entry &entry2) {
   return true;
 }
 
-size_t poly_idx_to_actual(const size_t poly_idx, const size_t fst_dim_sz, const size_t other_dim_sz) {
-  // we remap (N/N_1) * k + j to k + j * N_1. 
-  // Then k + j * N_1 is again remapped to (N/N_1)*k * (k/t) + j*t + k mod t
-  size_t k = poly_idx / other_dim_sz;
-  size_t j = poly_idx % other_dim_sz;
-
-  auto ts = DatabaseConstants::TileSz;
-  auto max_mult_of_ts = (fst_dim_sz / ts) * ts;
-  auto remain_fst_dim_sz = fst_dim_sz % ts;
-  if (k < max_mult_of_ts) {
-    return other_dim_sz * ts * (k / ts) + j * ts + k % ts;
-  } else {
-    return other_dim_sz * max_mult_of_ts + j * remain_fst_dim_sz + k - max_mult_of_ts;
-  }
-
-  // return k + j * fst_dim_sz;
-}
 
 void print_progress(size_t current, size_t total) {
     float progress = static_cast<float>(current) / total;

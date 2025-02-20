@@ -47,9 +47,9 @@ void PirServer::gen_data() {
   for (size_t row = 0; row < other_dim_sz; ++row) {
     std::vector<Entry> one_chunk(fst_dim_sz * num_en_per_pt, Entry(entry_size));
     for (size_t col = 0; col < fst_dim_sz; ++col) {
-      size_t poly_id = row * fst_dim_sz + col;
+      const size_t poly_id = row * fst_dim_sz + col;
       for (size_t local_id = 0; local_id < num_en_per_pt; ++local_id) {
-        size_t entry_id = poly_id * num_en_per_pt + local_id;
+        const size_t entry_id = poly_id * num_en_per_pt + local_id;
         one_chunk[col * num_en_per_pt + local_id] = generate_entry(entry_id, entry_size, random_file);
       }
     }
@@ -127,12 +127,12 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
     ct_acc = fst_dim_query[fst_dim_sz - 1]; // just a quick way to construct a new ciphertext. Will overwrite data in it.
     for (size_t poly_id = 0; poly_id < 2; poly_id++) {   // Each ciphertext has two polynomials
       auto mod_acc_ptr = ct_acc.data(poly_id); // pointer to store the modulus of accumulated value
-      auto inter_shift = j * one_ct_sz + poly_id * coeff_val_cnt;
+      const size_t inter_shift = j * one_ct_sz + poly_id * coeff_val_cnt;
       auto buff_ptr = inter_res_.data() + inter_shift;
       
       for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {  // RNS has two moduli
         // Now we calculate the modulus for the accumulated value.
-        auto rns_padding = (mod_id * DatabaseConstants::PolyDegree);
+        const size_t rns_padding = (mod_id * DatabaseConstants::PolyDegree);
         for (size_t coeff_id = 0; coeff_id < DatabaseConstants::PolyDegree; coeff_id++) {  // for each coefficient, we mod it with RNS modulus
           // the following is equivalent to: mod_acc_ptr[coeff_id + rns_padding] = buff_ptr[coeff_id + rns_padding] % coeff_modulus[mod_id]
           auto x = buff_ptr[coeff_id + rns_padding];
@@ -164,7 +164,7 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
    * The simple formula is: 
    * result = RGSW(b) * (y - x) + x, where "*" is the external product, "+" and "-" are homomorphic operations.
    */
-  auto block_size = result.size() / 2;
+  const size_t block_size = result.size() / 2;
   for (size_t i = 0; i < block_size; i++) {
     auto &x = result[i];
     auto &y = result[i + block_size];
@@ -182,11 +182,11 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
 // This function is using the algorithm 5 in Constant-weight PIR: Single-round Keyword PIR via Constant-weight Equality Operators.
 // https://www.usenix.org/conference/usenixsecurity22/presentation/mahdavi. Basically, the algorithm 3 in Onion-Ring ORAM has some typos.
 // And we can save one Subs(c_b, k) operation in the algorithm 3. The notations of this function follows the constant-weight PIR paper.
-std::vector<seal::Ciphertext> PirServer::expand_query(uint32_t client_id,
+std::vector<seal::Ciphertext> PirServer::expand_query(size_t client_id,
                                                       seal::Ciphertext &ciphertext) const {
   seal::EncryptionParameters params = pir_params_.get_seal_params();
   // This aligns with the number of coeff used by the client.
-  size_t num_cts = dims_[0] + pir_params_.get_l() * (dims_.size() - 1);  
+  const size_t num_cts = dims_[0] + pir_params_.get_l() * (dims_.size() - 1);  
 
   size_t log2N = 0; // log2(num_cts) rounds up. This is the same as padding num_cts to the next power of 2 then taking the log2.
   while ((1 << log2N) < num_cts) {
@@ -202,7 +202,7 @@ std::vector<seal::Ciphertext> PirServer::expand_query(uint32_t client_id,
 
   for (size_t a = 0; a < log2N; a++) {
 
-    size_t expansion_const = pow(2, a);
+    const size_t expansion_const = pow(2, a);
 
     for (size_t b = 0; b < expansion_const; b++) {
       Ciphertext cipher0 = cts[b];   // c_b in paper
@@ -220,13 +220,13 @@ std::vector<seal::Ciphertext> PirServer::expand_query(uint32_t client_id,
   return cts;
 }
 
-void PirServer::set_client_galois_key(const uint32_t client_id, std::stringstream &galois_stream) {
+void PirServer::set_client_galois_key(const size_t client_id, std::stringstream &galois_stream) {
   seal::GaloisKeys client_key;
   client_key.load(context_, galois_stream);
   client_galois_keys_[client_id] = client_key;
 }
 
-void PirServer::set_client_gsw_key(const uint32_t client_id, std::stringstream &gsw_stream) {
+void PirServer::set_client_gsw_key(const size_t client_id, std::stringstream &gsw_stream) {
   std::vector<seal::Ciphertext> temp_gsw;
   // load 2l ciphertexts from the stream
   for (size_t i = 0; i < 2 * pir_params_.get_l_key(); i++) {
@@ -243,7 +243,7 @@ void PirServer::set_client_gsw_key(const uint32_t client_id, std::stringstream &
 }
 
 
-Entry PirServer::direct_get_entry(const uint64_t entry_idx) {
+Entry PirServer::direct_get_entry(const size_t entry_idx) const {
   // read the entry from raw_db_file
   std::ifstream in_file(RAW_DB_FILE, std::ios::binary);
   if (!in_file.is_open()) {
@@ -260,7 +260,10 @@ Entry PirServer::direct_get_entry(const uint64_t entry_idx) {
 }
 
 
-std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, PirQuery &&query) {
+std::vector<seal::Ciphertext> PirServer::make_query(const size_t client_id, std::stringstream &query_stream) {
+  // receive the query from the client
+  PirQuery query; 
+  query.load(context_, query_stream);
 
   // ========================== Expansion & conversion ==========================
   // Query expansion
@@ -311,14 +314,6 @@ std::vector<seal::Ciphertext> PirServer::make_query(const uint32_t client_id, Pi
 }
 
 
-std::vector<seal::Ciphertext> PirServer::make_seeded_query(const uint32_t client_id, std::stringstream &data_stream) {
-  // Deserialize the query
-  PirQuery query;
-  query.load(context_, data_stream);
-  return make_query(client_id, std::move(query));
-}
-
-
 void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_t chunk_idx) {
   // Flattens data into vector of u8s and pads each entry with 0s to entry_size number of bytes.
   // This is actually resizing from entry.size() to pir_params_.get_entry_size()
@@ -336,13 +331,13 @@ void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_
   const size_t bits_per_coeff = pir_params_.get_num_bits_per_coeff();
   const size_t num_bits_per_plaintext = pir_params_.get_num_bits_per_plaintext();
   const size_t num_entries_per_plaintext = pir_params_.get_num_entries_per_plaintext();
-  const size_t num_plaintexts = pir_params_.get_num_pt();  // number of plaintexts in the new chunk
+  const size_t num_pt_per_chunk = chunk_entry.size() / num_entries_per_plaintext;  // number of plaintexts in the new chunk
   const uint128_t coeff_mask = (uint128_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
   const size_t fst_dim_sz = pir_params_.get_fst_dim_sz();  // number of plaintexts in the first dimension
   const size_t chunk_offset = fst_dim_sz * chunk_idx;  // offset for the current chunk
 
   // Now we handle plaintexts one by one.
-  for (size_t i = 0; i < num_plaintexts; i++) {
+  for (size_t i = 0; i < num_pt_per_chunk; i++) {
     seal::Plaintext plaintext(DatabaseConstants::PolyDegree);
 
     // Loop through the entries that corresponds to the current plaintext. 
@@ -404,11 +399,10 @@ void PirServer::fill_inter_res() {
   // However, in the first dimension, we want to store them in uint128_t.
   // So, we need to calculate the number of uint128_t we need to store.
   // number of rns modulus
-  auto num_mods = pir_params_.get_rns_mod_cnt();
-  DEBUG_PRINT("Number of RNS moduli: " << num_mods);
-  auto other_dim_sz = pir_params_.get_other_dim_sz();
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t other_dim_sz = pir_params_.get_other_dim_sz();
   // number of uint128_t we need to store in the intermediate result
-  auto elem_cnt = other_dim_sz * DatabaseConstants::PolyDegree * num_mods * 2;
+  const size_t elem_cnt = other_dim_sz * DatabaseConstants::PolyDegree * rns_mod_cnt * 2;
   // allocate memory for the intermediate result
   inter_res_.resize(elem_cnt);
 }
@@ -425,9 +419,4 @@ void PirServer::write_one_chunk(std::vector<Entry> &data) {
   } else {
     std::cerr << "Unable to open file for writing" << std::endl;
   }
-}
-
-
-std::vector<size_t> PirServer::get_dims() const {
-  return dims_;
 }

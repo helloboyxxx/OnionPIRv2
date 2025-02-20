@@ -88,8 +88,6 @@ class GSWEval {
     */
     void gsw_ntt_negacyclic_harvey(GSWCiphertext &gsw);
 
-    void ciphertext_inverse_ntt(seal::Ciphertext &ct);
-
     // helper functions
     void sealGSWVecToGSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec);
 };

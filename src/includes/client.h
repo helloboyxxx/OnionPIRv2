@@ -17,7 +17,7 @@ public:
   @return returns a seal::Ciphertext with a a seed stored in
   c_1, which should not be touched before doing serialization.
   */
-  PirQuery generate_query(const std::uint64_t entry_index);
+  PirQuery generate_query(const size_t entry_index);
   size_t write_query_to_stream(const PirQuery &query, std::stringstream &data_stream);
   size_t write_gsw_to_stream(const std::vector<Ciphertext> &gsw, std::stringstream &gsw_stream);
   size_t create_galois_keys(std::stringstream &galois_key_stream);
@@ -30,10 +30,10 @@ public:
   }
   
   Entry get_entry_from_plaintext(const size_t entry_index, const seal::Plaintext plaintext) const;
-  inline uint32_t get_client_id() const { return client_id_; }
+  inline size_t get_client_id() const { return client_id_; }
 
 private:
-  uint32_t client_id_;
+  size_t client_id_;
   seal::SEALContext context_;
   seal::KeyGenerator keygen_;
   seal::SecretKey secret_key_;

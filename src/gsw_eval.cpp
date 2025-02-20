@@ -30,20 +30,6 @@ void GSWEval::gsw_ntt_negacyclic_harvey(GSWCiphertext &gsw) {
   }
 }
 
-void GSWEval::ciphertext_inverse_ntt(seal::Ciphertext &ct) {
-  const size_t coeff_count = DatabaseConstants::PolyDegree;
-  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
-  const auto &context = pir_params_.get_context();
-  auto ntt_tables = context.first_context_data()->small_ntt_tables();
-
-  for (size_t i = 0; i < rns_mod_cnt; i++) {
-    seal::util::inverse_ntt_negacyclic_harvey(ct.data(0) + coeff_count * i, *(ntt_tables + i));
-  }
-  for (size_t i = 0; i < rns_mod_cnt; i++) {
-    seal::util::inverse_ntt_negacyclic_harvey(ct.data(1) + coeff_count * i, *(ntt_tables + i));
-  }
-}
-
 void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext const &bfv,
                               seal::Ciphertext &res_ct) {
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();

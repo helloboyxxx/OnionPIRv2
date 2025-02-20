@@ -24,16 +24,8 @@ public:
   // push one chunk of entry to the given database
   void push_database_chunk(std::vector<Entry> &chunk_entry, const size_t chunk_idx);
 
-  std::vector<size_t> get_dims() const;
-
   // Given the client id and a packed client query, this function first unpacks the query, then returns the retrieved encrypted result.
-  std::vector<seal::Ciphertext> make_query(const uint32_t client_id, PirQuery &&query);
-
-  // similar to make_query, but accepts a stringstream as input instead of the huge PirQuery object.
-  std::vector<seal::Ciphertext> make_seeded_query(const uint32_t client_id, std::stringstream &data_stream);
-
-
-  // void load_gsw(std::stringstream &stream, GSWCiphertext &gsw);
+  std::vector<seal::Ciphertext> make_query(const size_t client_id, std::stringstream &query_stream);
 
   /**
    * @brief A clever way to evaluate the external product for second to last dimensions. 
@@ -42,23 +34,24 @@ public:
    * @param selection_cipher A single RGSW(b) ciphertext, where b \in {0, 1}. 0 to get the first half of the result, 1 to get the second half.
    */
   void evaluate_gsw_product(std::vector<seal::Ciphertext> &result, GSWCiphertext &selection_cipher);
-  void set_client_galois_key(const uint32_t client_id, std::stringstream &gsw_stream);
-  void set_client_gsw_key(const uint32_t client_id, std::stringstream &gsw_stream);
+  
+  void set_client_galois_key(const size_t client_id, std::stringstream &gsw_stream);
+  void set_client_gsw_key(const size_t client_id, std::stringstream &gsw_stream);
 
   /**
   Asking the server to return the entry at the given (abstract) index.
   This is not doing PIR. So this reveals the index to the server. This is
   only for testing purposes.
   */
-  Entry direct_get_entry(const uint64_t index);
+  Entry direct_get_entry(const size_t index) const;
 
 private:
   size_t num_pt_;
   seal::SEALContext context_;
   seal::Evaluator evaluator_;
   std::vector<size_t> dims_;
-  std::map<uint32_t, seal::GaloisKeys> client_galois_keys_;
-  std::map<uint32_t, GSWCiphertext> client_gsw_keys_;
+  std::map<size_t, seal::GaloisKeys> client_galois_keys_;
+  std::map<size_t, GSWCiphertext> client_gsw_keys_;
   Database db_; // pointer to the entire database vector
   std::vector<uint64_t> db_aligned_; // aligned database for fast first dim
   std::vector<uint128_t> inter_res_; // pointer to the intermediate result vector for fst dim
@@ -70,7 +63,7 @@ private:
     Expands the first query ciphertext into a selection vector of ciphertexts
     where the ith ciphertext encodes the ith bit of the first query ciphertext.
   */
-  std::vector<seal::Ciphertext> expand_query(uint32_t client_id, seal::Ciphertext &ciphertext) const;
+  std::vector<seal::Ciphertext> expand_query(size_t client_id, seal::Ciphertext &ciphertext) const;
   /*!
     Performs a cross product between the first selection vector and the
     database.

@@ -70,11 +70,6 @@ void print_entry(const Entry &entry);
 
 bool entry_is_equal(const Entry &entry1, const Entry &entry2);
 
-
-// logical entry index to the actuall index in the database.
-// This is a trick we do for reducing the miss cache rate when evaluating the first dimension.
-size_t poly_idx_to_actual(const size_t entry_idx, const size_t fst_dim_sz, const size_t other_dim_sz);
-
 void print_progress(size_t current, size_t total);
 
 /**

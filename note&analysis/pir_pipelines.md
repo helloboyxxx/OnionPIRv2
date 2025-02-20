@@ -12,7 +12,7 @@ Here I am listing the basic pipeline of the current OnionPIRv2. I will focus on 
 
 4. ###### Online phase: client generate the query BFV ciphertext. This BFV is in coefficient form (`client.generate_query`).
 
-5. `server.make_seeded_query()` first expand_query and reconstruct query vectors for different dimensions. 
+5. `server.make_query()` first expand_query and reconstruct query vectors for different dimensions. 
 
 6. Transform the first dimension query vector to NTT form and evaluate the first dimension. 
 

@@ -18,8 +18,8 @@ std::vector<Ciphertext> PirClient::generate_gsw_from_key() {
   std::vector<seal::Ciphertext> gsw_enc; // temporary GSW ciphertext using seal::Ciphertext
   const auto sk_ = secret_key_.data();
   const auto ntt_tables = context_.first_context_data()->small_ntt_tables();
-  const auto rns_mod_cnt = pir_params_.get_rns_mod_cnt();
-  const auto coeff_count = DatabaseConstants::PolyDegree;
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
   std::vector<uint64_t> sk_ntt(coeff_count * rns_mod_cnt);
 
   memcpy(sk_ntt.data(), sk_.data(), coeff_count * rns_mod_cnt * sizeof(uint64_t));
@@ -38,7 +38,7 @@ size_t PirClient::get_database_plain_index(size_t entry_index) {
 
 std::vector<size_t> PirClient::get_query_indices(size_t plaintext_index) {
   std::vector<size_t> query_indices;
-  size_t col_idx = plaintext_index % dims_[0];  // the first dimension
+  const size_t col_idx = plaintext_index % dims_[0];  // the first dimension
   size_t row_idx = plaintext_index / dims_[0];  // the rest of the dimensions
   size_t remain_pt_num = pir_params_.get_num_pt() / dims_[0];
 
@@ -55,15 +55,15 @@ std::vector<size_t> PirClient::get_query_indices(size_t plaintext_index) {
 
 
 
-PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
+PirQuery PirClient::generate_query(const size_t entry_index) {
 
   // ================== Setup parameters ==================
   // Get the corresponding index of the plaintext in the database
   const size_t plaintext_index = get_database_plain_index(entry_index);
   std::vector<size_t> query_indices = get_query_indices(plaintext_index);
   PRINT_INT_ARRAY("\t\tquery_indices", query_indices.data(), query_indices.size());
-  const uint64_t msg_size = dims_[0] + pir_params_.get_l() * (dims_.size() - 1);
-  const uint64_t bits_per_ciphertext = 1 << get_expan_height(); // padding msg_size to the next power of 2
+  const size_t msg_size = dims_[0] + pir_params_.get_l() * (dims_.size() - 1);
+  const size_t bits_per_ciphertext = 1 << get_expan_height(); // padding msg_size to the next power of 2
 
   // Algorithm 1 from the OnionPIR Paper
 
@@ -82,10 +82,10 @@ PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
   PirQuery query;
   encryptor_.encrypt_symmetric_seeded(plain_query, query);
 
-  const auto l = pir_params_.get_l();
-  const auto base_log2 = pir_params_.get_base_log2();
+  const size_t l = pir_params_.get_l();
+  const size_t base_log2 = pir_params_.get_base_log2();
   const auto coeff_modulus = pir_params_.get_coeff_modulus();
-  const auto rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 
   // The following two for-loops calculates the powers for GSW gadgets.
   std::vector<uint128_t> inv(rns_mod_cnt);
@@ -112,11 +112,11 @@ PirQuery PirClient::generate_query(const std::uint64_t entry_index) {
       // ! pt is a ct_coeff_type *. It points to the current position to be written.
       for (size_t k = 0; k < l; k++) {
         for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {
-          auto pad = mod_id * DatabaseConstants::PolyDegree;   // We use two moduli for the same gadget value. They are apart by coeff_count.
-          auto coef_pos = dims_[0] + (i-1) * l + k + pad;  // the position of the coefficient in the query
+          const size_t pad = mod_id * DatabaseConstants::PolyDegree;   // We use two moduli for the same gadget value. They are apart by coeff_count.
+          const size_t coef_pos = dims_[0] + (i-1) * l + k + pad;  // the position of the coefficient in the query
           uint128_t mod = coeff_modulus[mod_id].value();
           // the coeff is (B^{l-1}, ..., B^0) / bits_per_ciphertext
-          auto coef = gadget[mod_id][k] * inv[mod_id] % mod;
+          uint128_t coef = gadget[mod_id][k] * inv[mod_id] % mod;
           q_head[coef_pos] = (q_head[coef_pos] + coef) % mod;
         }
       }

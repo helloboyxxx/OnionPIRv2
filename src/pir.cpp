@@ -83,7 +83,7 @@ PirParams::PirParams()
 
 
   // Since all dimensions are fixed to 2 except the first one. We calculate the number of dimensions here.
-  const uint64_t ndim = 1 + log2(other_dim_sz);
+  const size_t ndim = 1 + log2(other_dim_sz);
   // All dimensions are fixed to 2 except the first one.
   dims_.push_back(first_dim_sz);
   for (size_t i = 1; i < ndim; i++) {
