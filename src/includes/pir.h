@@ -59,7 +59,8 @@ public:
     return context_.first_context_data()->parms().coeff_modulus();
   }
 
-  // ================== information related ==================
+  // ================== helper functions ==================
+  static seal::EncryptionParameters init_seal_params();
   void print_params() const;
 
 private:
@@ -73,12 +74,4 @@ private:
   std::vector<size_t> dims_; // Number of dimensions
   seal::EncryptionParameters seal_params_;
   seal::SEALContext context_;
-
-
-
-
-  // ================== helper functions ==================
-  seal::EncryptionParameters init_seal_params();
-
-
 };

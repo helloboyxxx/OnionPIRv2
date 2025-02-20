@@ -17,8 +17,8 @@ seal::EncryptionParameters PirParams::init_seal_params() {
 
   const uint64_t pt_mod = generate_prime(DatabaseConstants::PlainMod);
   params.set_plain_modulus(pt_mod);
-  std::vector<int> bit_sizes(DatabaseConstants::CoeffModulus.begin(),
-                             DatabaseConstants::CoeffModulus.end());
+  std::vector<int> bit_sizes(DatabaseConstants::CoeffMods.begin(),
+                             DatabaseConstants::CoeffMods.end());
   const auto coeff_modulus =
       CoeffModulus::Create(DatabaseConstants::PolyDegree, bit_sizes);
   params.set_coeff_modulus(coeff_modulus);
