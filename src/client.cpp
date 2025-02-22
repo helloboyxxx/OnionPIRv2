@@ -20,15 +20,13 @@ std::vector<Ciphertext> PirClient::generate_gsw_from_key() {
   const auto ntt_tables = context_.first_context_data()->small_ntt_tables();
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
   const size_t coeff_count = DatabaseConstants::PolyDegree;
-  std::vector<uint64_t> sk_ntt(coeff_count * rns_mod_cnt);
-
-  memcpy(sk_ntt.data(), sk_.data(), coeff_count * rns_mod_cnt * sizeof(uint64_t));
+  std::vector<uint64_t> sk_ntt(sk_.data(), sk_.data() + coeff_count * rns_mod_cnt);
 
   RNSIter secret_key_iter(sk_ntt.data(), coeff_count);
   inverse_ntt_negacyclic_harvey(secret_key_iter, rns_mod_cnt, ntt_tables);
 
   GSWEval key_gsw(pir_params_, pir_params_.get_l_key(), pir_params_.get_base_log2_key());
-  key_gsw.encrypt_plain_to_gsw(sk_ntt, encryptor_, secret_key_, gsw_enc);
+  key_gsw.plain_to_half_gsw(sk_ntt, encryptor_, secret_key_, gsw_enc);
   return gsw_enc;
 }
 

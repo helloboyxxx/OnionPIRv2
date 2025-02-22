@@ -25,6 +25,8 @@ void print_func_name(std::string func_name) {
 void run_tests() {
   test_pir();
   bfv_example();
+  serialization_example();
+  test_external_product();
 }
 
 
@@ -224,10 +226,14 @@ void test_pir() {
   decryptor_->decrypt(cipher_result, result);
   BENCH_PRINT("Noise budget after: " << decryptor_->invariant_noise_budget(cipher_result)); // noise budget is almost the same.
   BENCH_PRINT("NTT + NTT result: " << result.to_string());  // and the result is correct! NTT form polynomial is additive
+  PRINT_BAR;
 
   // ============= Now let's try BFV multiplied by a constant in ntt form ==============
   seal::Plaintext scalar(coeff_count);
-  scalar[0] = 2; scalar[1] = 3;
+  scalar[0] = 2;
+  scalar[1] = 3;
+  BENCH_PRINT("Vector a: " << a.to_string());
+  BENCH_PRINT("Scalar: " << scalar.to_string());
   evaluator_.transform_to_ntt_inplace(scalar, context_.first_parms_id()); // This happens in preprocess_ntt
   // Now instead of using multiply_plain, I want to demonstrate what happens in the first dimension evaluation. 
   // This is demonstrating what you can do in ntt form, but the actual order of computation in OnionPIRv2 fst dim can be different.
@@ -237,7 +243,7 @@ void test_pir() {
   uint64_t *ct0_ptr = a_encrypted.data(0);
   uint64_t *ct1_ptr = a_encrypted.data(1);
   uint128_t *res0_ptr = res.data();
-  uint128_t *res1_ptr = res.data() + coeff_count;
+  uint128_t *res1_ptr = res.data() +  coeff_count * rns_mod_cnt * 2;
   uint64_t *pt_ptr = scalar.data();
   // element wise vector multiplication.
   for (size_t i = 0; i < coeff_count * rns_mod_cnt; i++) {
@@ -252,15 +258,162 @@ void test_pir() {
   for (size_t i = 0; i < coeff_count; i++) {
     for (size_t j = 0; j < rns_mod_cnt; j++) {
       auto curr_mod = coeff_modulus[j].value();
-      scal_mul_ct0_ptr[i] = res0_ptr[i + j * coeff_count] % curr_mod;
-      scal_mul_ct0_ptr[i] = res1_ptr[i + j * coeff_count] % curr_mod;
+      scal_mul_ct0_ptr[i + j * coeff_count] = res0_ptr[i + j * coeff_count] % curr_mod;
+      scal_mul_ct1_ptr[i + j * coeff_count] = res1_ptr[i + j * coeff_count] % curr_mod;
     }
   }
-
   evaluator_.transform_from_ntt_inplace(scalar_mul_result);
   decryptor_->decrypt(scalar_mul_result, result);
   BENCH_PRINT("NTT x scalar result: " << result.to_string());  // and the result is correct! NTT form polynomial is multiplicative
+  /*
+  Now, in the old OnionPIR, this kind of elementwise multiplication is computed for num_poly many times. That is, the smallest operation
+  is this vector-vector elementwise multiplication. However, this is actually bad for the cache. TODO: I need to find a way to optimize this.
+  */
   PRINT_BAR;
-  // ============= Now let's try subtraction in coefficient form ==============
-  // This is actually interesting
+
+  // ============= Now let's try BFV multiplied by two identical constants then subtract ==============
+  // Actually, this creates something called transparant ciphertext, which is warned in the SEAL documentation.
+  seal::Plaintext constant(coeff_count);
+  constant[0] = 2;
+  seal::Ciphertext fst_mult_result, snd_mult_result;
+  evaluator_.multiply_plain(a_encrypted, scalar, fst_mult_result);
+  evaluator_.multiply_plain(a_encrypted, scalar, snd_mult_result);
+  BENCH_PRINT("If you see an error about 'transparent ciphertext' below, "
+              "please make sure you are using "
+              "-DSEAL_THROW_ON_TRANSPARENT_CIPHERTEXT=OFF when building SEAL");
+  evaluator_.sub_inplace(fst_mult_result, snd_mult_result);
+  evaluator_.transform_from_ntt_inplace(fst_mult_result);
+  decryptor_->decrypt(fst_mult_result, result);
+  BENCH_PRINT("You should see a zero ¬_¬: " << result.to_string()); 
+}
+
+
+void serialization_example() {
+  print_func_name(__FUNCTION__);
+  PirParams pir_params;
+  auto params = pir_params.get_seal_params();
+  auto context_ = seal::SEALContext(params);
+  auto evaluator_ = seal::Evaluator(context_);
+  auto keygen_ = seal::KeyGenerator(context_);
+  auto secret_key_ = keygen_.secret_key();
+  auto encryptor_ = new seal::Encryptor(context_, secret_key_);
+  auto decryptor_ = new seal::Decryptor(context_, secret_key_);
+
+  std::stringstream data_stream;
+
+  // ================== Raw Zero ciphertext ==================
+  seal::Ciphertext raw_zero;
+  encryptor_->encrypt_zero_symmetric(raw_zero);
+  auto raw_size = raw_zero.save(data_stream); // store the raw zero in the stream
+
+  // ================== SEAL original method for creating serialized zero ==================
+  // Original method for creating a serializable object
+  Serializable<Ciphertext> orig_serialized_zero = encryptor_->encrypt_zero_symmetric();
+  auto s_size = orig_serialized_zero.save(data_stream);   // ! Storing the original zero
+
+  // ================== New way to create a ciphertext with a seed ==================
+  // New way to create a ciphertext with a seed, do some operations and then convert it to a serializable object.
+  seal::Ciphertext new_seeded_zero;
+  encryptor_->encrypt_zero_symmetric_seeded(new_seeded_zero); // This function allows us to change the ciphertext.data(0).
+
+  // Add something in the third coeeficient of seeded_zero
+  DEBUG_PRINT("Size: " << new_seeded_zero.size());
+  auto ptr_0 = new_seeded_zero.data(0);
+  auto ptr_1 = new_seeded_zero.data(1); // corresponds to the second polynomial (c_1)
+  // print the binary value of the first coefficient
+  BENCH_PRINT("Indicator:\t" << std::bitset<64>(ptr_1[0]));  // used in has_seed_marker()
+  // the seed is stored in here. By the time I write this code, it takes 81
+  // bytes to store the prng seed. Notice that they have common headers.
+  BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[1]));
+  BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[2]));
+  BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[3]));
+  BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[4]));
+  BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[5]));
+  
+  auto mods = context_.first_context_data()->parms().coeff_modulus();
+  auto plain_modulus = params.plain_modulus().value();
+  uint128_t mod_0 = mods[0].value();
+  uint128_t mod_1 = mods[1].value();
+  uint128_t delta = mod_0 * mod_1 / plain_modulus;
+  uint128_t message = 15;
+  uint128_t to_add = delta * message;
+  auto padding = params.poly_modulus_degree();
+  ptr_0[0] = (ptr_0[0] + (to_add % mod_0)) % mod_0;
+  ptr_0[0 + padding] = (ptr_0[0 + padding] + (to_add % mod_1)) % mod_1;
+
+  // write the serializable object to the stream
+  auto s2_size = new_seeded_zero.save(data_stream); // ! Storing new ciphertext with a seed
+
+  // ================== Deserialize and decrypt the ciphertexts ==================
+  seal::Ciphertext raw_ct, orig_ct, new_ct;
+  raw_ct.load(context_, data_stream);  // ! loading the raw zero
+  orig_ct.load(context_, data_stream);  // ! loading the original zero
+  new_ct.load(context_, data_stream); // ! loading the new ciphertext with a seed 
+
+  // decrypt the ciphertexts
+  seal::Plaintext raw_pt, orig_pt, new_pt;
+  decryptor_->decrypt(raw_ct, raw_pt);
+  decryptor_->decrypt(orig_ct, orig_pt);
+  decryptor_->decrypt(new_ct, new_pt);
+
+  // ================== Print the results ==================
+  BENCH_PRINT("Raw zero size: " << raw_size);
+  BENCH_PRINT("Serializable size 1: " << s_size);
+  BENCH_PRINT("Serializable size 2: " << s2_size); // smaller size, but allow us to work on the ciphertext!
+
+  BENCH_PRINT("Raw plaintext: " << raw_pt.to_string());
+  BENCH_PRINT("Original plaintext: " << orig_pt.to_string());
+  BENCH_PRINT("New plaintext: " << new_pt.to_string()); // Hopefully, this decrypts to the message.
+}
+
+// This is a BFV x GSW example
+void test_external_product() {
+  print_func_name(__FUNCTION__);
+  PirParams pir_params;
+  auto params = pir_params.get_seal_params();
+  auto context_ = seal::SEALContext(params);
+  auto evaluator_ = seal::Evaluator(context_);
+  auto keygen_ = seal::KeyGenerator(context_);
+  auto secret_key_ = keygen_.secret_key();
+  auto encryptor_ = new seal::Encryptor(context_, secret_key_);
+  auto decryptor_ = new seal::Decryptor(context_, secret_key_);
+
+  size_t coeff_count = DatabaseConstants::PolyDegree;
+
+  // the test data vector a and results are both in BFV scheme.
+  seal::Plaintext a(coeff_count), result;
+  size_t plain_coeff_count = a.coeff_count();
+  seal::Ciphertext a_encrypted(context_), cipher_result(context_);    // encrypted "a" will be stored here.
+  std::vector<uint64_t> b(coeff_count); // vector b is in the context of GSW scheme.
+  a[0] = 1; a[1] = 2; a[2] = 3;
+  b[0] = 2;
+  BENCH_PRINT("Vector a: " << a.to_string());
+  std::string b_str = "Vector b: ";
+  for (int i = 0; i < 5; i++) {
+    b_str += std::to_string(b[i]) + " ";
+  } 
+  BENCH_PRINT(b_str);  
+  // Since a_encrypted is in a context of BFV scheme, the following function encrypts "a" using BFV scheme.
+  encryptor_->encrypt_symmetric(a, a_encrypted);
+
+  std::cout << "Noise budget before: " << decryptor_->invariant_noise_budget(a_encrypted)
+            << std::endl;
+  
+  std::vector<seal::Ciphertext> temp_gsw;
+  GSWEval data_gsw(pir_params, pir_params.get_l(), pir_params.get_base_log2());
+  data_gsw.plain_to_gsw(b, *encryptor_, secret_key_, temp_gsw); 
+  GSWCiphertext b_gsw;
+  data_gsw.sealGSWVecToGSW(b_gsw, temp_gsw);
+
+  size_t mult_rounds = 1;
+  for (int i = 0; i < mult_rounds; i++) {
+    data_gsw.external_product(b_gsw, a_encrypted, a_encrypted);
+    evaluator_.transform_from_ntt_inplace(a_encrypted);
+    decryptor_->decrypt(a_encrypted, result);
+    std::cout << "Noise budget after: " << decryptor_->invariant_noise_budget(a_encrypted)
+              << std::endl;
+  
+  // output decrypted result
+  std::cout << "External product result: " << result.to_string() << std::endl;
+  }
 }

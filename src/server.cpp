@@ -172,7 +172,6 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
     TIME_START(EXTERN_PROD_TOT_TIME);
     data_gsw_.external_product(selection_cipher, y, y);  // b * (y - x)
     TIME_END(EXTERN_PROD_TOT_TIME);
-    y.is_ntt_form() = true;
     evaluator_.transform_from_ntt_inplace(y);
     evaluator_.add_inplace(result[i], y);  // x + b * (y - x)
   }

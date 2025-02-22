@@ -78,6 +78,7 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
       }
     }
   }
+  res_ct.is_ntt_form() = true;  // the result of two NTT form polynomials is still in NTT form.
 }
 
 void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output) {
@@ -201,7 +202,60 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
   }
 }
 
-void GSWEval::encrypt_plain_to_gsw(std::vector<uint64_t> const &plaintext,
+void GSWEval::plain_to_gsw(std::vector<uint64_t> const &plaintext,
+                  seal::Encryptor const &encryptor, seal::SecretKey const &sk,
+                  std::vector<seal::Ciphertext> &output) { 
+  output.clear(); 
+  // when poly_id = 0, we are working on the first half of the GSWCiphertext
+  for (size_t poly_id = 0; poly_id < 2; poly_id++) {
+    for (size_t k = 0; k < l_; k++) {
+      seal::Ciphertext cipher; 
+      plain_to_gsw_one_row(plaintext, encryptor, sk, poly_id, k, cipher);
+      output.push_back(cipher);
+    }
+  }
+}
+
+void GSWEval::plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
+                                   seal::Encryptor const &encryptor,
+                                   seal::SecretKey const &sk,
+                                   const size_t level, const size_t half,
+                                   seal::Ciphertext &output) {
+
+  // Accessing context data within this function instead of passing these parameters
+  const auto &context = pir_params_.get_context();
+  const auto &params = context.first_context_data()->parms();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const auto &coeff_modulus = pir_params_.get_coeff_modulus();
+  const size_t rns_mod_cnt = coeff_modulus.size();
+  assert(plaintext.size() == coeff_count * rns_mod_cnt || plaintext.size() == coeff_count);
+
+  // Create RGSW gadget.
+  // We only use rns_mod_cnt many gadgets, we can save some computation here. Not a big deal though. 
+  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
+
+  encryptor.encrypt_zero_symmetric_seeded(output);
+  auto ct = output.data(half);
+  // Many(2) moduli are used
+  for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {
+    size_t pad = (mod_id * coeff_count);
+    uint128_t mod = coeff_modulus[mod_id].value();
+    uint64_t gadget_coef = gadget[mod_id][level];
+    auto pt = plaintext.data();
+    if (plaintext.size() == coeff_count * rns_mod_cnt) {
+      pt = plaintext.data() + pad;
+    }
+    // Loop through plaintext coefficients
+    for (size_t j = 0; j < coeff_count; j++) {
+      // TODO: We can use barret reduction here.
+      uint128_t val = (uint128_t)pt[j] * gadget_coef % mod;
+      ct[j + pad] =
+          static_cast<uint64_t>((ct[j + pad] + val) % mod);
+    }
+  }
+}
+
+void GSWEval::plain_to_half_gsw(std::vector<uint64_t> const &plaintext,
                                    seal::Encryptor const &encryptor,
                                    seal::SecretKey const &sk,
                                    std::vector<seal::Ciphertext> &output) {
@@ -209,18 +263,17 @@ void GSWEval::encrypt_plain_to_gsw(std::vector<uint64_t> const &plaintext,
   // when poly_id = 0, we are working on the first half of the GSWCiphertext
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     for (size_t k = 0; k < l_; k++) {
-      seal::Ciphertext cipher =
-          enc_plain_to_gsw_one_row(plaintext, encryptor, sk, poly_id, k);
+      seal::Ciphertext cipher; 
+      plain_to_half_gsw_one_row(plaintext, encryptor, sk, poly_id, k, cipher);
       output.push_back(cipher);
     }
   }
 }
 
-seal::Ciphertext
-GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
+void GSWEval::plain_to_half_gsw_one_row(std::vector<uint64_t> const &plaintext,
                                   seal::Encryptor const &encryptor,
                                   seal::SecretKey const &sk, const size_t half,
-                                  const size_t level) {
+                                  const size_t level, seal::Ciphertext &output) {
 
   // Accessing context data within this function instead of passing these parameters
   const auto &context = pir_params_.get_context();
@@ -235,28 +288,22 @@ GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
 
   // ================== Second half of the seeded GSW ==================
   if (half == 1) {
-    seal::Ciphertext cipher;
     // extract the level column of gadget
     std::vector<uint64_t> col;
     for (size_t i = 0; i < rns_mod_cnt; i++) {
       col.push_back(gadget[i][level]);
     }
     seal::util::prepare_seeded_gsw_key(sk, col, context,
-                                       params.parms_id(), false, cipher);
-    return cipher;
+                                       params.parms_id(), false, output);
+    return;
   }
 
   // ================== Other cases ==================
-
+  assert(half == 0);
   // If we are at the first half of the GSW, we are adding new things to the
   // first polynomial (c0) of the given BFV ciphertext. c1 is not touched.
-  seal::Ciphertext cipher;
-  if (half == 0) {
-    encryptor.encrypt_zero_symmetric_seeded(cipher);
-  } else {
-    encryptor.encrypt_zero_symmetric(cipher);
-  }
-  auto ct = cipher.data(half);
+  encryptor.encrypt_zero_symmetric_seeded(output);
+  auto ct = output.data(0);
   // Many(2) moduli are used
   for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {
     size_t pad = (mod_id * coeff_count);
@@ -268,12 +315,12 @@ GSWEval::enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
     }
     // Loop through plaintext coefficients
     for (size_t j = 0; j < coeff_count; j++) {
+      // TODO: We can use barret reduction here.
       uint128_t val = (uint128_t)pt[j] * gadget_coef % mod;
       ct[j + pad] =
           static_cast<uint64_t>((ct[j + pad] + val) % mod);
     }
   }
-  return cipher;
 }
 
 void GSWEval::sealGSWVecToGSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec) {

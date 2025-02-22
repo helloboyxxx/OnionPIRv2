@@ -58,16 +58,26 @@ class GSWEval {
     void query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gsw_key,
                       GSWCiphertext &output);
 
+    // Although we don't need this function in the normal OnionPIR protocol, we provide this function for testing the external product. 
+    void plain_to_gsw(std::vector<uint64_t> const &plaintext,
+                      seal::Encryptor const &encryptor,
+                      seal::SecretKey const &sk,
+                      std::vector<seal::Ciphertext> &output);
 
-    // The input plaintext is a vector of all the coefficients. Assert that the size of this vector 
+    void plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
+                         seal::Encryptor const &encryptor,
+                         seal::SecretKey const &sk, const size_t half,
+                         const size_t level, seal::Ciphertext &output);
+
+    // The input plaintext is a vector of all the coefficients (In the coefficient form). Assert that the size of this vector 
     // is equal to the number of coefficients in the Plaintext, including the zero coefficients.
-    void encrypt_plain_to_gsw(std::vector<uint64_t> const &plaintext,
+    void plain_to_half_gsw(std::vector<uint64_t> const &plaintext,
                               seal::Encryptor const &encryptor,
                               seal::SecretKey const &sk,
                               std::vector<seal::Ciphertext> &output);
 
     /**
-    @brief Helper function for encrypt_plain_to_gsw. This function encrypts the
+    @brief Helper function for plain_to_half_gsw. This function encrypts the
     plaintext to a single row of the GSW ciphertext at the given "half" and the
     given l. half = 0 means the first half of the GSW.
 
@@ -76,11 +86,10 @@ class GSWEval {
     @param level level in the given half
     @return seal::Ciphertext
     */
-    seal::Ciphertext
-    enc_plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
+    void plain_to_half_gsw_one_row(std::vector<uint64_t> const &plaintext,
                             seal::Encryptor const &encryptor,
                             seal::SecretKey const &sk, const size_t half,
-                            const size_t level);
+                            const size_t level, seal::Ciphertext &output);
 
     /**
     * @brief Transform the given GSWCipher text from polynomial representation to NTT representation.

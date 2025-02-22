@@ -18,8 +18,8 @@ public:
   c_1, which should not be touched before doing serialization.
   */
   PirQuery generate_query(const size_t entry_index);
-  size_t write_query_to_stream(const PirQuery &query, std::stringstream &data_stream);
-  size_t write_gsw_to_stream(const std::vector<Ciphertext> &gsw, std::stringstream &gsw_stream);
+  static size_t write_query_to_stream(const PirQuery &query, std::stringstream &data_stream);
+  static size_t write_gsw_to_stream(const std::vector<Ciphertext> &gsw, std::stringstream &gsw_stream);
   size_t create_galois_keys(std::stringstream &galois_key_stream);
   std::vector<seal::Plaintext> decrypt_result(const std::vector<seal::Ciphertext> reply);
   // Retrieves an entry from the plaintext containing the entry.
