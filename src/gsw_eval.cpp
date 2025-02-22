@@ -210,7 +210,7 @@ void GSWEval::plain_to_gsw(std::vector<uint64_t> const &plaintext,
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     for (size_t k = 0; k < l_; k++) {
       seal::Ciphertext cipher; 
-      plain_to_gsw_one_row(plaintext, encryptor, sk, poly_id, k, cipher);
+      plain_to_gsw_one_row(plaintext, encryptor, sk, k, poly_id, cipher);
       output.push_back(cipher);
     }
   }
@@ -224,7 +224,6 @@ void GSWEval::plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
 
   // Accessing context data within this function instead of passing these parameters
   const auto &context = pir_params_.get_context();
-  const auto &params = context.first_context_data()->parms();
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const auto &coeff_modulus = pir_params_.get_coeff_modulus();
   const size_t rns_mod_cnt = coeff_modulus.size();
@@ -234,13 +233,13 @@ void GSWEval::plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
   // We only use rns_mod_cnt many gadgets, we can save some computation here. Not a big deal though. 
   std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
 
-  encryptor.encrypt_zero_symmetric_seeded(output);
+  encryptor.encrypt_zero_symmetric(output);
   auto ct = output.data(half);
-  // Many(2) moduli are used
+  // plaintext is multiplied by the gadget and added to the ciphertext
   for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {
-    size_t pad = (mod_id * coeff_count);
-    uint128_t mod = coeff_modulus[mod_id].value();
-    uint64_t gadget_coef = gadget[mod_id][level];
+    const size_t pad = (mod_id * coeff_count);
+    const uint128_t mod = coeff_modulus[mod_id].value();
+    const uint64_t gadget_coef = gadget[mod_id][level];
     auto pt = plaintext.data();
     if (plaintext.size() == coeff_count * rns_mod_cnt) {
       pt = plaintext.data() + pad;
@@ -330,6 +329,7 @@ void GSWEval::sealGSWVecToGSW(GSWCiphertext &output, const std::vector<seal::Cip
   output.clear();
   for (auto &ct : gsw_vec) {
     std::vector<uint64_t> row;
+    row.reserve(2 * coeff_count * rns_mod_cnt);
     for (size_t i = 0; i < coeff_count * rns_mod_cnt; i++) {
       row.push_back(ct.data(0)[i]);
     }

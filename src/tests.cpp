@@ -6,8 +6,7 @@
 #include "utils.h"
 #include <cassert>
 #include <iostream>
-
-
+#include <bitset>
 
 #define EXPERIMENT_ITERATIONS 3
 
@@ -23,7 +22,7 @@ void print_func_name(std::string func_name) {
 }
 
 void run_tests() {
-  test_pir();
+  // test_pir();
   bfv_example();
   serialization_example();
   test_external_product();
@@ -323,32 +322,37 @@ void serialization_example() {
   // print the binary value of the first coefficient
   BENCH_PRINT("Indicator:\t" << std::bitset<64>(ptr_1[0]));  // used in has_seed_marker()
   // the seed is stored in here. By the time I write this code, it takes 81
-  // bytes to store the prng seed. Notice that they have common headers.
+  // bytes to store the prng seed. Notice that they have common prefix.
   BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[1]));
   BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[2]));
   BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[3]));
   BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[4]));
   BENCH_PRINT("Seed: \t\t" << std::bitset<64>(ptr_1[5]));
   
-  auto mods = context_.first_context_data()->parms().coeff_modulus();
-  auto plain_modulus = params.plain_modulus().value();
-  uint128_t mod_0 = mods[0].value();
-  uint128_t mod_1 = mods[1].value();
-  uint128_t delta = mod_0 * mod_1 / plain_modulus;
+  auto mods = pir_params.get_coeff_modulus();
+  auto plain_modulus = pir_params.get_plain_mod();
+  uint128_t ct_mod = 1; 
+  for (size_t mod_id = 0; mod_id < mods.size(); mod_id++) {
+    ct_mod *= mods[mod_id].value();
+  }
+  uint128_t delta = ct_mod / plain_modulus;  // delta = floor (ciphertext modulus / plaintext modulus)
   uint128_t message = 15;
   uint128_t to_add = delta * message;
   auto padding = params.poly_modulus_degree();
-  ptr_0[0] = (ptr_0[0] + (to_add % mod_0)) % mod_0;
-  ptr_0[0 + padding] = (ptr_0[0 + padding] + (to_add % mod_1)) % mod_1;
+  for (size_t mod_id = 0; mod_id < mods.size(); mod_id++) {
+    ptr_0[mod_id * padding] = (ptr_0[mod_id * padding] + (to_add % mods[mod_id].value())) % mods[mod_id].value();
+  }
 
   // write the serializable object to the stream
-  auto s2_size = new_seeded_zero.save(data_stream); // ! Storing new ciphertext with a seed
+  auto s2_size = new_seeded_zero.save(data_stream); // Storing new ciphertext with a seed
+
+  BENCH_PRINT("Size of the ciphertexts: " << new_seeded_zero.size());
 
   // ================== Deserialize and decrypt the ciphertexts ==================
   seal::Ciphertext raw_ct, orig_ct, new_ct;
-  raw_ct.load(context_, data_stream);  // ! loading the raw zero
-  orig_ct.load(context_, data_stream);  // ! loading the original zero
-  new_ct.load(context_, data_stream); // ! loading the new ciphertext with a seed 
+  raw_ct.load(context_, data_stream);  // loading the raw zero
+  orig_ct.load(context_, data_stream);  // loading the original zero
+  new_ct.load(context_, data_stream); // loading the new ciphertext with a seed 
 
   // decrypt the ciphertexts
   seal::Plaintext raw_pt, orig_pt, new_pt;
@@ -370,20 +374,17 @@ void serialization_example() {
 void test_external_product() {
   print_func_name(__FUNCTION__);
   PirParams pir_params;
-  auto params = pir_params.get_seal_params();
+  const auto params = pir_params.get_seal_params();
   auto context_ = seal::SEALContext(params);
   auto evaluator_ = seal::Evaluator(context_);
   auto keygen_ = seal::KeyGenerator(context_);
   auto secret_key_ = keygen_.secret_key();
   auto encryptor_ = new seal::Encryptor(context_, secret_key_);
   auto decryptor_ = new seal::Decryptor(context_, secret_key_);
-
-  size_t coeff_count = DatabaseConstants::PolyDegree;
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
 
   // the test data vector a and results are both in BFV scheme.
   seal::Plaintext a(coeff_count), result;
-  size_t plain_coeff_count = a.coeff_count();
-  seal::Ciphertext a_encrypted(context_), cipher_result(context_);    // encrypted "a" will be stored here.
   std::vector<uint64_t> b(coeff_count); // vector b is in the context of GSW scheme.
   a[0] = 1; a[1] = 2; a[2] = 3;
   b[0] = 2;
@@ -391,29 +392,28 @@ void test_external_product() {
   std::string b_str = "Vector b: ";
   for (int i = 0; i < 5; i++) {
     b_str += std::to_string(b[i]) + " ";
-  } 
+  }
   BENCH_PRINT(b_str);  
-  // Since a_encrypted is in a context of BFV scheme, the following function encrypts "a" using BFV scheme.
+  
+  seal::Ciphertext a_encrypted;    // encrypted "a" will be stored here. 
   encryptor_->encrypt_symmetric(a, a_encrypted);
 
-  std::cout << "Noise budget before: " << decryptor_->invariant_noise_budget(a_encrypted)
-            << std::endl;
-  
+  // encrypt the plaintext b to GSW ciphertext
   std::vector<seal::Ciphertext> temp_gsw;
   GSWEval data_gsw(pir_params, pir_params.get_l(), pir_params.get_base_log2());
   data_gsw.plain_to_gsw(b, *encryptor_, secret_key_, temp_gsw); 
   GSWCiphertext b_gsw;
   data_gsw.sealGSWVecToGSW(b_gsw, temp_gsw);
+  data_gsw.gsw_ntt_negacyclic_harvey(b_gsw);
 
-  size_t mult_rounds = 1;
-  for (int i = 0; i < mult_rounds; i++) {
-    data_gsw.external_product(b_gsw, a_encrypted, a_encrypted);
-    evaluator_.transform_from_ntt_inplace(a_encrypted);
-    decryptor_->decrypt(a_encrypted, result);
-    std::cout << "Noise budget after: " << decryptor_->invariant_noise_budget(a_encrypted)
-              << std::endl;
-  
+  // actual external product
+  std::cout << "Noise budget before: " << decryptor_->invariant_noise_budget(a_encrypted) << std::endl;
+  data_gsw.external_product(b_gsw, a_encrypted, a_encrypted);
+  evaluator_.transform_from_ntt_inplace(a_encrypted);
+  decryptor_->decrypt(a_encrypted, result);
   // output decrypted result
   std::cout << "External product result: " << result.to_string() << std::endl;
-  }
+
+  std::cout << "Noise budget after: " << decryptor_->invariant_noise_budget(a_encrypted)
+            << std::endl;
 }
