@@ -4,6 +4,7 @@
 #include "server.h"
 #include "client.h"
 #include "utils.h"
+#include "logging.h"
 #include <cassert>
 #include <iostream>
 #include <bitset>
@@ -23,8 +24,8 @@ void print_func_name(std::string func_name) {
 
 void run_tests() {
   // test_pir();
-  bfv_example();
-  serialization_example();
+  // bfv_example();
+  // serialization_example();
   test_external_product();
 }
 
@@ -386,8 +387,8 @@ void test_external_product() {
   // the test data vector a and results are both in BFV scheme.
   seal::Plaintext a(coeff_count), result;
   std::vector<uint64_t> b(coeff_count); // vector b is in the context of GSW scheme.
-  a[0] = 1; a[1] = 2; a[2] = 3;
-  b[0] = 2;
+  a[0] = 1; a[1] = 2; a[2] = 4;
+  b[0] = 2; // You can also try 1, then you can do external product hundreds of times.
   BENCH_PRINT("Vector a: " << a.to_string());
   std::string b_str = "Vector b: ";
   for (int i = 0; i < 5; i++) {
@@ -399,21 +400,63 @@ void test_external_product() {
   encryptor_->encrypt_symmetric(a, a_encrypted);
 
   // encrypt the plaintext b to GSW ciphertext
+  // You can also try different gsw_l and base_log2. But you need to follow the equation:
+  // base_log2 = (bits + l - 1) / l; where bits is the bit width of the ciphertext modulus. 
+  const size_t gsw_l = pir_params.get_l();
+  const size_t base_log2 = pir_params.get_base_log2();
+  GSWEval data_gsw(pir_params, gsw_l, base_log2);
   std::vector<seal::Ciphertext> temp_gsw;
-  GSWEval data_gsw(pir_params, pir_params.get_l(), pir_params.get_base_log2());
-  data_gsw.plain_to_gsw(b, *encryptor_, secret_key_, temp_gsw); 
+  data_gsw.plain_to_gsw(b, *encryptor_, secret_key_, temp_gsw); // In OnionPIR, client use a similar function to encrypt the secret key. 
   GSWCiphertext b_gsw;
   data_gsw.sealGSWVecToGSW(b_gsw, temp_gsw);
-  data_gsw.gsw_ntt_negacyclic_harvey(b_gsw);
+  data_gsw.gsw_ntt_negacyclic_harvey(b_gsw);  // We need NTT form RGSW.
 
   // actual external product
-  std::cout << "Noise budget before: " << decryptor_->invariant_noise_budget(a_encrypted) << std::endl;
-  data_gsw.external_product(b_gsw, a_encrypted, a_encrypted);
-  evaluator_.transform_from_ntt_inplace(a_encrypted);
-  decryptor_->decrypt(a_encrypted, result);
-  // output decrypted result
-  std::cout << "External product result: " << result.to_string() << std::endl;
+  BENCH_PRINT("Noise budget before: " << decryptor_->invariant_noise_budget(a_encrypted));
+  const size_t num_iter = 10; // And you can do this external product many times when the data in GSW is small. 
+  for (size_t i = 0; i < num_iter; ++i) {
+    data_gsw.external_product(b_gsw, a_encrypted, a_encrypted); // The decomposition requires coefficient form BFV
+    evaluator_.transform_from_ntt_inplace(a_encrypted);
+    decryptor_->decrypt(a_encrypted, result);
+    // output decrypted result
+    BENCH_PRINT("External product result: " << result.to_string());
+  }
+  BENCH_PRINT("Noise budget after: " << decryptor_->invariant_noise_budget(a_encrypted));
+  PRINT_BAR;
+  // ============= Now, let's try profiling the external product ==============
+  // I prefer to use samply. It works for both mac and linux. 
+  // I will also log the time elapsed in the external product function.
+  
+  // when poly_degree = 2048, a single BFV is 32KB.
+  const size_t num_samples = 10000;
+  std::vector<seal::Ciphertext> a_encrypted_vec(num_samples);
+  for (size_t i = 0; i < num_samples; i++) {
+    encryptor_->encrypt_symmetric(a, a_encrypted_vec[i]);
+  }
 
-  std::cout << "Noise budget after: " << decryptor_->invariant_noise_budget(a_encrypted)
-            << std::endl;
+  TIME_START(EXTERN_PROD_TOT_TIME);
+  for (size_t i = 0; i < num_samples; i++) {
+    data_gsw.external_product(b_gsw, a_encrypted_vec[i], a_encrypted_vec[i]);
+
+    TIME_START("inverse ntt");
+    evaluator_.transform_from_ntt_inplace(a_encrypted_vec[i]); // Try uncommenting this line and see the difference.
+    TIME_END("inverse ntt");
+  }
+  TIME_END(EXTERN_PROD_TOT_TIME);
+
+  // print the timing result
+  // roughly the result should be in the structure: 
+  /*
+    External product
+      - Decomposition
+        - memcpy and compose
+        - right shift
+        - decompose
+        - ntt
+      - mat mat mult
+      - delayed mod
+    Inverse NTT
+  */
+  END_EXPERIMENT();
+  PRINT_RESULTS(); 
 }

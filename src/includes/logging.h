@@ -19,7 +19,7 @@
 
 #define BENCH_PRINT(s) std::cout << s << std::endl;
 
-#define PRINT_BAR BENCH_PRINT("==============================================================");
+#define PRINT_BAR BENCH_PRINT("==============================================================================");
 
 // predefine some name for logging
 #define CORE_TIME "Core"

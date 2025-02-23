@@ -64,6 +64,7 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
   TIME_END(EXTERN_PROD_MAT_MULT_TIME);
 
   // taking mods.
+  TIME_START("external mod");
   const auto coeff_modulus = pir_params_.get_coeff_modulus();
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     auto ct_ptr = res_ct.data(poly_id);
@@ -78,6 +79,7 @@ void GSWEval::external_product(GSWCiphertext const &gsw_enc, seal::Ciphertext co
       }
     }
   }
+  TIME_END("external mod");
   res_ct.is_ntt_form() = true;  // the result of two NTT form polynomials is still in NTT form.
 }
 
@@ -152,8 +154,10 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
 
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     const uint64_t *poly_ptr = ct.data(poly_id);
+    TIME_START("memcpy and compose");
     memcpy(data.data(), poly_ptr, coeff_count * sizeof(uint64_t));
     rns_base->compose_array(data.data(), coeff_count, pool);
+    TIME_END("memcpy and compose");
 
     for (int p = l_ - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
@@ -163,7 +167,10 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
         row[k] = (row[k] >> shift_amount) & mask;
       }
       TIME_END(RIGHT_SHIFT_TIME);
+
+      TIME_START("decompose");
       rns_base->decompose_array(row.data(), coeff_count, pool);
+      TIME_END("decompose");
 
       // transform to NTT form
       TIME_START(EXTERN_NTT_TIME);
