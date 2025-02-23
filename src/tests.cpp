@@ -23,9 +23,9 @@ void print_func_name(std::string func_name) {
 }
 
 void run_tests() {
-  // test_pir();
-  // bfv_example();
-  // serialization_example();
+  test_pir();
+  bfv_example();
+  serialization_example();
   test_external_product();
 }
 
@@ -433,7 +433,7 @@ void test_external_product() {
   for (size_t i = 0; i < num_samples; i++) {
     encryptor_->encrypt_symmetric(a, a_encrypted_vec[i]);
   }
-
+  CLEAN_TIMER();
   TIME_START(EXTERN_PROD_TOT_TIME);
   for (size_t i = 0; i < num_samples; i++) {
     data_gsw.external_product(b_gsw, a_encrypted_vec[i], a_encrypted_vec[i]);
@@ -449,7 +449,8 @@ void test_external_product() {
   /*
     External product
       - Decomposition
-        - memcpy and compose
+        - memcpy
+        - compose
         - right shift
         - decompose
         - ntt

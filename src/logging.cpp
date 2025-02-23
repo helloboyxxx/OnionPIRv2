@@ -122,3 +122,10 @@ void TimerLogger::prettyPrint() {
     prettyPrintHelper(SERVER_TOT_TIME, "", false);
     prettyPrintHelper(CLIENT_TOT_TIME, "", true);
 }
+
+void TimerLogger::cleanup() {
+    startTimes.clear();
+    experimentRecords.clear();
+    currentExperiment.clear();
+}
+

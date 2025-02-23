@@ -102,9 +102,12 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
   std::vector<uint64_t> data(coeff_count * rns_mod_cnt);
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     const uint64_t *poly_ptr = ct.data(poly_id);
-
+    TIME_START(EXTERN_MEMCPY);
     memcpy(data.data(), poly_ptr, coeff_count * rns_mod_cnt * sizeof(uint64_t));
+    TIME_END(EXTERN_MEMCPY); 
+    TIME_START(EXTERN_COMPOSE);
     rns_base->compose_array(data.data(), coeff_count, pool);
+    TIME_END(EXTERN_COMPOSE);
 
     for (int p = l_ - 1; p >= 0; p--) {
       std::vector<uint64_t> row = data;
@@ -119,7 +122,9 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
         }
       }
       TIME_END(RIGHT_SHIFT_TIME);
+      TIME_START(EXTERN_DECOMP);
       rns_base->decompose_array(row.data(), coeff_count, pool);
+      TIME_END(EXTERN_DECOMP);
 
       TIME_START(EXTERN_NTT_TIME);
       // transform to NTT form

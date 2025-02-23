@@ -34,6 +34,10 @@
 #define EXTERN_PROD_MAT_MULT_TIME "External product mat mult (including conversion)"
 #define FST_NTT_TIME "First dim NTT"
 #define EXTERN_NTT_TIME "External NTT"
+#define EXTERN_MEMCPY "external memcpy"
+#define EXTERN_COMPOSE "external compose"
+#define EXTERN_DECOMP "external decompose"
+
 #define RIGHT_SHIFT_TIME "Right shift"
 #define FST_DELEY_MOD_TIME "First dim delay mod"
 
@@ -90,6 +94,8 @@ public:
     // Pretty print hierarchical results
     void prettyPrint();
 
+    void cleanup();
+
     // Prevent copying
     TimerLogger(const TimerLogger&) = delete;
     TimerLogger& operator=(const TimerLogger&) = delete;
@@ -104,6 +110,7 @@ public:
 #define PRINT_AVERAGE_RESULTS() TimerLogger::getInstance().printAverageResults()
 #define GET_AVG_TIME(sec) TimerLogger::getInstance().getAvgTime(sec)
 #define PRETTY_PRINT() TimerLogger::getInstance().prettyPrint()
+#define CLEAN_TIMER() TimerLogger::getInstance().cleanup()
 
 
 #endif // LOGGER_H
