@@ -38,7 +38,7 @@ void TimerLogger::printResults(size_t expId) {
 
     if (expId == -1) {
         // Print all experiments
-        std::cout << "===== Experiment Timing Results =====\n";
+        std::cout << "========================== Experiment Timing Results =========================\n";
         for (size_t i = 0; i < experimentRecords.size(); ++i) {
             std::cout << "Experiment " << i + 1 << ":\n";
             for (const auto& [section, time] : experimentRecords[i]) {
@@ -47,7 +47,7 @@ void TimerLogger::printResults(size_t expId) {
         }
     } else if (expId >= 1 && expId <= experimentRecords.size()) {
         // Print a specific experiment
-        std::cout << "===== Experiment " << expId << " Timing Results =====\n";
+        std::cout << "========================== Experiment " << expId << " Timing Results =========================\n";
         for (const auto& [section, time] : experimentRecords[expId - 1]) {
             std::cout << section << ": " << time << " ms\n";
         }
