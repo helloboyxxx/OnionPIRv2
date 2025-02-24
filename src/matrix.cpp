@@ -19,16 +19,23 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
     const uint64_t *A_ptr = A_data + level * (m * n);
     const uint64_t *B_ptr = B_data + level * (n * p);
     uint64_t *C_ptr = out_data + level * (m * p);
-    uint64_t db0, db1, db2, db3;
+    uint64_t db0, db1, db2, db3, db4, db5, db6, db7;
     uint64_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
-    for (size_t i = 0; i < m; i += 4) {
+    uint64_t tmp8, tmp9, tmp10, tmp11, tmp12, tmp13, tmp14, tmp15;
+    for (size_t i = 0; i < m; i += 8) {
       tmp0 = 0; tmp1 = 0; tmp2 = 0; tmp3 = 0;
       tmp4 = 0; tmp5 = 0; tmp6 = 0; tmp7 = 0;
+      tmp8 = 0; tmp9 = 0; tmp10 = 0; tmp11 = 0;
+      tmp12 = 0; tmp13 = 0; tmp14 = 0; tmp15 = 0;
       for (size_t j = 0; j < n; j++) {
         db0 = A_ptr[i * n + j];
         db1 = A_ptr[(i + 1) * n + j];
         db2 = A_ptr[(i + 2) * n + j];
         db3 = A_ptr[(i + 3) * n + j];
+        db4 = A_ptr[(i + 4) * n + j];
+        db5 = A_ptr[(i + 5) * n + j];
+        db6 = A_ptr[(i + 6) * n + j];
+        db7 = A_ptr[(i + 7) * n + j];
         tmp0 += db0 * B_ptr[j * p];
         tmp1 += db0 * B_ptr[j * p + 1];
         tmp2 += db1 * B_ptr[j * p];
@@ -37,6 +44,14 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
         tmp5 += db2 * B_ptr[j * p + 1];
         tmp6 += db3 * B_ptr[j * p];
         tmp7 += db3 * B_ptr[j * p + 1];
+        tmp8 += db4 * B_ptr[j * p];
+        tmp9 += db4 * B_ptr[j * p + 1];
+        tmp10 += db5 * B_ptr[j * p];
+        tmp11 += db5 * B_ptr[j * p + 1];
+        tmp12 += db6 * B_ptr[j * p];
+        tmp13 += db6 * B_ptr[j * p + 1];
+        tmp14 += db7 * B_ptr[j * p];
+        tmp15 += db7 * B_ptr[j * p + 1];
       }
       C_ptr[i * p] = tmp0;
       C_ptr[i * p + 1] = tmp1;
@@ -46,6 +61,14 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
       C_ptr[(i + 2) * p + 1] = tmp5;
       C_ptr[(i + 3) * p] = tmp6;
       C_ptr[(i + 3) * p + 1] = tmp7;
+      C_ptr[(i + 4) * p] = tmp8;
+      C_ptr[(i + 4) * p + 1] = tmp9;
+      C_ptr[(i + 5) * p] = tmp10;
+      C_ptr[(i + 5) * p + 1] = tmp11;
+      C_ptr[(i + 6) * p] = tmp12;
+      C_ptr[(i + 6) * p + 1] = tmp13;
+      C_ptr[(i + 7) * p] = tmp14;
+      C_ptr[(i + 7) * p + 1] = tmp15;
     }
   } // end for(level)
 }

@@ -28,9 +28,9 @@ void run_tests() {
   // bfv_example();
   // serialization_example();
   // test_external_product();
-  // test_matrix_mult();
-  level_mat_mult_demo();
-  component_wise_mult_demo();
+  test_matrix_mult();
+  // level_mat_mult_demo();
+  // component_wise_mult_demo();
 }
 
 
@@ -512,9 +512,7 @@ void test_matrix_mult() {
 
   // some simple code to make sure it is not optimized out
   size_t sum = 0;
-  for (size_t i = 0; i < m * p * k; i++) {
-    sum += C_data[i];
-  }
+  for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
   PRINT_BAR;
 
@@ -523,12 +521,20 @@ void test_matrix_mult() {
   component_wise_mult(&A_mat, &B_mat, &C_mat); 
   TIME_END("Old elementwise multiplication");
   sum = 0;
-  for (size_t i = 0; i < m * p * k; i++) {
-    sum += C_data[i];
-  }
+  for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
   END_EXPERIMENT();
   PRINT_RESULTS();
+  PRINT_BAR; 
+
+  // Let's calculate the throughput of the matrix multiplication, express in MB/s
+  double level_mat_mult_time = GET_AVG_TIME("Matrix multiplication");
+  double old_elementwise_mult_time = GET_AVG_TIME("Old elementwise multiplication");
+  double level_mat_mult_throughput = db_size / (level_mat_mult_time * 1000);
+  double old_elementwise_mult_throughput = db_size / (old_elementwise_mult_time * 1000); 
+  BENCH_PRINT("Level mat mult throughput: " << (size_t) level_mat_mult_throughput << " MB/s");
+  BENCH_PRINT("Old elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
+
 }
 
 void level_mat_mult_demo() {
@@ -618,9 +624,7 @@ void level_mat_mult_demo() {
   }
 }
 
-//---------------------------------------------------------
-// Test Case 2: component_wise_mult
-//---------------------------------------------------------
+
 void component_wise_mult_demo() {
   std::cout << "=== Test: component_wise_mult (using same data as level test) ===" << std::endl;
   // We use m=4, n=3, p=2, levels=2.
