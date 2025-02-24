@@ -24,11 +24,11 @@ void print_func_name(std::string func_name) {
 }
 
 void run_tests() {
-  // test_pir();
+  test_pir();
   // bfv_example();
   // serialization_example();
   // test_external_product();
-  test_matrix_mult();
+  // test_matrix_mult();
   // level_mat_mult_demo();
   // component_wise_mult_demo();
 }

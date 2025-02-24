@@ -1,6 +1,7 @@
 #include "server.h"
 #include "gsw_eval.h"
 #include "utils.h"
+#include "matrix.h"
 #include <cassert>
 #include <cstdlib>
 #include <memory>
@@ -17,10 +18,11 @@ PirServer::PirServer(const PirParams &pir_params)
       data_gsw_(pir_params, pir_params.get_l(), pir_params.get_base_log2()) {
   // delete the raw_db_file if it exists
   std::remove(RAW_DB_FILE);
-
   // allocate enough space for the database, init with std::nullopt
   db_ = std::make_unique<std::optional<seal::Plaintext>[]>(num_pt_);
-  db_aligned_.reserve(num_pt_ * pir_params.get_coeff_val_cnt());
+  // after NTT, each database polynomial coefficient will be in mod q. Hence,
+  // they will be represented by rns_mod_cnt many uint64_t, same as the ciphertext. 
+  db_aligned_ = std::make_unique<uint64_t[]>(num_pt_ * pir_params_.get_coeff_val_cnt());
   fill_inter_res();
 }
 
@@ -61,7 +63,7 @@ void PirServer::gen_data() {
   // transform the ntt_db_ from coefficient form to ntt form. db_ is not transformed.
   BENCH_PRINT("\nTransforming the database to NTT form...");
   preprocess_ntt();
-  // realign_db();
+  realign_db();
 }
 
 
@@ -86,36 +88,52 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   // fill the intermediate result with zeros
   std::fill(inter_res_.begin(), inter_res_.end(), 0);
 
+  // reallocate the query data to a continuous memory 
+  std::vector<uint64_t> query_data(fst_dim_sz * 2 * coeff_val_cnt);
+  for (size_t i = 0; i < fst_dim_sz; i++) {
+    std::copy(fst_dim_query[i].data(0), fst_dim_query[i].data(0) + coeff_val_cnt, query_data.data() + i * 2 * coeff_val_cnt);
+    std::copy(fst_dim_query[i].data(1), fst_dim_query[i].data(1) + coeff_val_cnt, query_data.data() + i * 2 * coeff_val_cnt + coeff_val_cnt);
+  }
+
+
+
   /*
   I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
   vector. The goal is to calculate DB * fst_dim_query, but each multiplication is
   a vector-vector elementwise multiplication.
   TODO: I believe this can be optimized. Currently, the throughput is same as
   the vec-vec elementwise multiplication. However, ideally, the first dimension
-  is equivalent to poly_degree many mat-vec multiplications.
-  Well, obviously, I need help.
+  is equivalent to coeff_val_cnt many mat-vec multiplications.
   */
   TIME_START(CORE_TIME);
 
-  size_t row, col, elem_id;
-  uint64_t *db_ptr;
-  uint64_t *q0, *q1;
-  uint128_t *inter_ptr0, *inter_ptr1;
-  for (row = 0; row < other_dim_sz; ++row) {
-    for (col = 0; col < fst_dim_sz; ++col) {
-      db_ptr = db_[row * fst_dim_sz + col].value().data();
-      q0 = fst_dim_query[col].data(0); // query polynomial 0
-      q1 = fst_dim_query[col].data(1); // query polynomial 1
-      inter_ptr0 = inter_res_.data() + row * one_ct_sz; // intermediate result ptr for polynomial 0
-      inter_ptr1 = inter_res_.data() + row * one_ct_sz + coeff_val_cnt;
-      #pragma GCC unroll 32
-      for (elem_id = 0; elem_id < coeff_val_cnt; ++elem_id) {
-        inter_ptr0[elem_id] += static_cast<uint128_t>(q0[elem_id]) * db_ptr[elem_id];
-        inter_ptr1[elem_id] += static_cast<uint128_t>(q1[elem_id]) * db_ptr[elem_id];
-      }
-    }
-  }
+  // size_t row, col, elem_id;
+  // uint64_t *db_ptr;
+  // uint64_t *q0, *q1;
+  // uint128_t *inter_ptr0, *inter_ptr1;
+  // for (row = 0; row < other_dim_sz; ++row) {
+  //   for (col = 0; col < fst_dim_sz; ++col) {
+  //     db_ptr = db_[row * fst_dim_sz + col].value().data();
+  //     q0 = fst_dim_query[col].data(0); // query polynomial 0
+  //     q1 = fst_dim_query[col].data(1); // query polynomial 1
+  //     inter_ptr0 = inter_res_.data() + row * one_ct_sz; // intermediate result ptr for polynomial 0
+  //     inter_ptr1 = inter_res_.data() + row * one_ct_sz + coeff_val_cnt;
+  //     #pragma GCC unroll 32
+  //     for (elem_id = 0; elem_id < coeff_val_cnt; ++elem_id) {
+  //       inter_ptr0[elem_id] += static_cast<uint128_t>(q0[elem_id]) * db_ptr[elem_id];
+  //       inter_ptr1[elem_id] += static_cast<uint128_t>(q1[elem_id]) * db_ptr[elem_id];
+  //     }
+  //   }
+  // }
 
+  // Now, let's try to use the level_mat_mult function to do the same thing.
+
+  // prepare the matrices
+  matrix_t db_mat { db_aligned_.get(), other_dim_sz, fst_dim_sz, rns_mod_cnt };
+  matrix_t query_mat { query_data.data(), fst_dim_sz, 2, coeff_val_cnt };
+  matrix128_t inter_res_mat { inter_res_.data(), other_dim_sz, 2, coeff_val_cnt };
+  level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
+  
   TIME_END(CORE_TIME);
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
@@ -390,6 +408,29 @@ void PirServer::preprocess_ntt() {
       evaluator_.transform_to_ntt_inplace(pt, context_.first_parms_id());
     }
   }
+}
+
+void PirServer::realign_db() {
+  // realign the database to the first dimension
+  const size_t fst_dim_sz = pir_params_.get_fst_dim_sz();
+  const size_t other_dim_sz = pir_params_.get_other_dim_sz();
+  const size_t num_en_per_pt = pir_params_.get_num_entries_per_plaintext();
+  const size_t entry_size = pir_params_.get_entry_size();
+  const size_t coeff_val_cnt = pir_params_.get_coeff_val_cnt();
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t one_ct_sz = 2 * coeff_val_cnt; // Ciphertext has two polynomials
+
+  size_t aligned_db_idx = 0;
+  for (size_t level = 0; level < coeff_val_cnt; level++) {
+    for (size_t row = 0; row < other_dim_sz; ++row) {
+      for (size_t col = 0; col < fst_dim_sz; ++col) {
+        uint64_t *db_ptr = db_[row * fst_dim_sz + col].value().data();  // getting the pointer to the current plaintext
+        db_aligned_[aligned_db_idx++] = db_ptr[level];  // copy the coefficient to the aligned db
+      }
+    }
+  }
+  // destroy the db_ to save memory
+  db_.reset();
 }
 
 
