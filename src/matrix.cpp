@@ -10,10 +10,7 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   const uint64_t *B_data = B->data;
   uint64_t *out_data = out->data;
   // Safety check (not strictly necessary, but wise):
-  if (p != 2) {
-    // Handle error or return
-    return;
-  }
+  if (p != 2) { return; }
 
   // For each "level," we do one standard matrix multiplication.
   // A(level) is m-by-n, B(level) is n-by-2, out(level) is m-by-2
@@ -63,10 +60,7 @@ void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   uint64_t *B_data = B->data;
   uint64_t *out_data = out->data;
   // Safety check (not strictly necessary, but wise):
-  if (p != 2) {
-    // Handle error or return
-    return;
-  }  
+  if (p != 2) { return; }  
   for (size_t i = 0; i < m; i++) {
     for (size_t j = 0; j < n; j++) {
       uint64_t *db_ptr = A_data + (i * n + j) * levels;
@@ -82,11 +76,3 @@ void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
     }
   }
 }
-
-
-
-
-
-
-
-

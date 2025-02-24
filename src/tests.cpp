@@ -28,8 +28,9 @@ void run_tests() {
   // bfv_example();
   // serialization_example();
   // test_external_product();
-
-  test_matrix_mult();
+  // test_matrix_mult();
+  level_mat_mult_demo();
+  component_wise_mult_demo();
 }
 
 
@@ -501,6 +502,10 @@ void test_matrix_mult() {
   // So, the idea is that we can do k many matrix matrix
   // multiplications. Instead of doing the component wise multiplication, which
   // I think is not cache friendly, matrix multiplication can benefit from local caching. 
+  // Note that these two functions are processing the data in a very different order. 
+  // I asked ChatGPT to generate a two examples for me. 
+  // You can check the component_wise_mult_demo and level_mat_mult_demo functions.
+
   TIME_START("Matrix multiplication");
   level_mat_mult(&A_mat, &B_mat, &C_mat);
   TIME_END("Matrix multiplication");
@@ -511,8 +516,6 @@ void test_matrix_mult() {
     sum += C_data[i];
   }
   BENCH_PRINT("Sum: " << sum);
-  END_EXPERIMENT();
-  PRINT_RESULTS(1);
   PRINT_BAR;
 
   // ============= Old OnionPIR elementwise multiplication ==============
@@ -525,11 +528,212 @@ void test_matrix_mult() {
   }
   BENCH_PRINT("Sum: " << sum);
   END_EXPERIMENT();
-  PRINT_RESULTS(2);
-
-  
-
+  PRINT_RESULTS();
 }
 
+void level_mat_mult_demo() {
+  print_func_name(__FUNCTION__);
+  constexpr size_t m = 4, n = 3, p = 2, levels = 2;
+  // Total elements:
+  //  A:  m*n*levels = 4*3*2 = 24 numbers.
+  //  B:  n*p*levels = 3*2*2 = 12 numbers.
+  //  C:  m*p*levels = 4*2*2 = 16 numbers.
 
+  // For Level 0:
+  // A0 (4x3):
+  //   [  1   2   3 ]
+  //   [  4   5   6 ]
+  //   [  7   8   9 ]
+  //   [ 10  11  12 ]
+  // B0 (3x2):
+  //   [ 1  2 ]
+  //   [ 3  4 ]
+  //   [ 5  6 ]
+  //
+  // Expected C0 (4x2):
+  // Row 0: 1*1 + 2*3 + 3*5 = 22,    1*2 + 2*4 + 3*6 = 28
+  // Row 1: 4*1 + 5*3 + 6*5 = 49,    4*2 + 5*4 + 6*6 = 64
+  // Row 2: 7*1 + 8*3 + 9*5 = 76,    7*2 + 8*4 + 9*6 = 100
+  // Row 3:10*1+11*3+12*5 = 103, 10*2+11*4+12*6 = 136
 
+  // For Level 1:
+  // A1 (4x3):
+  //   [  2   4   6 ]
+  //   [  8  10  12 ]
+  //   [ 14  16  18 ]
+  //   [ 20  22  24 ]
+  // B1 (3x2):
+  //   [ 2  3 ]
+  //   [ 4  5 ]
+  //   [ 6  7 ]
+  //
+  // Expected C1 (4x2):
+  // Row 0: 2*2 + 4*4 + 6*6 = 56,    2*3 + 4*5 + 6*7 = 68
+  // Row 1: 8*2 +10*4+12*6 = 128,    8*3 +10*5+12*7 = 158
+  // Row 2:14*2+16*4+18*6 = 200,    14*3+16*5+18*7 = 248
+  // Row 3:20*2+22*4+24*6 = 272,    20*3+22*5+24*7 = 338
+
+  uint64_t A_data[m * n * levels] = {
+    // Level 0:
+    1, 2, 3,
+    4, 5, 6,
+    7, 8, 9,
+    10, 11, 12,
+    // Level 1:
+    2, 4, 6,
+    8, 10, 12,
+    14, 16, 18,
+    20, 22, 24
+  };
+  uint64_t B_data[n * p * levels] = {
+    // Level 0:
+    1, 2,
+    3, 4,
+    5, 6,
+    // Level 1:
+    2, 3,
+    4, 5,
+    6, 7
+  };
+  uint64_t C_data[m * p * levels] = { 0 };
+
+  matrix_t A = { A_data, m, n, levels };
+  matrix_t B = { B_data, n, p, levels };
+  matrix_t C = { C_data, m, p, levels };
+
+  level_mat_mult(&A, &B, &C);
+
+  // Print the results level by level.
+  for (size_t lvl = 0; lvl < levels; ++lvl) {
+    std::cout << "Level " << lvl << " result:" << std::endl;
+    const uint64_t *C_ptr = C_data + lvl * (m * p);
+    for (size_t i = 0; i < m; ++i) {
+      std::cout << "Row " << i << ": ";
+      for (size_t j = 0; j < p; ++j) {
+        std::cout << C_ptr[i * p + j] << " ";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+  }
+}
+
+//---------------------------------------------------------
+// Test Case 2: component_wise_mult
+//---------------------------------------------------------
+void component_wise_mult_demo() {
+  std::cout << "=== Test: component_wise_mult (using same data as level test) ===" << std::endl;
+  // We use m=4, n=3, p=2, levels=2.
+  constexpr size_t m = 4, n = 3, p = 2, levels = 2;
+  // For the level test, the data were as follows:
+  //
+  // Level 0 (for A and B):
+  // A0 (4x3):
+  //   [  1   2   3 ]
+  //   [  4   5   6 ]
+  //   [  7   8   9 ]
+  //   [ 10  11  12 ]
+  // B0 (3x2):
+  //   [ 1  2 ]
+  //   [ 3  4 ]
+  //   [ 5  6 ]
+  //
+  // Level 1:
+  // A1 (4x3):
+  //   [  2   4   6 ]
+  //   [  8  10  12 ]
+  //   [ 14  16  18 ]
+  //   [ 20  22  24 ]
+  // B1 (3x2):
+  //   [ 2  3 ]
+  //   [ 4  5 ]
+  //   [ 6  7 ]
+  //
+  // For component_wise_mult, we store the data with levels as the fastest dimension.
+  // Thus, for each matrix element (i,j) of A, we store: [ level0, level1 ].
+  //
+  // Construct A_data (dimensions: 4 x 3 x 2) with the following layout:
+  // Row 0: 
+  //   A(0,0,:) = [ 1, 2 ]
+  //   A(0,1,:) = [ 2, 4 ]
+  //   A(0,2,:) = [ 3, 6 ]
+  // Row 1:
+  //   A(1,0,:) = [ 4, 8 ]
+  //   A(1,1,:) = [ 5, 10 ]
+  //   A(1,2,:) = [ 6, 12 ]
+  // Row 2:
+  //   A(2,0,:) = [ 7, 14 ]
+  //   A(2,1,:) = [ 8, 16 ]
+  //   A(2,2,:) = [ 9, 18 ]
+  // Row 3:
+  //   A(3,0,:) = [10, 20 ]
+  //   A(3,1,:) = [11, 22 ]
+  //   A(3,2,:) = [12, 24 ]
+  uint64_t A_data[m * n * levels] = {
+    // Row 0:
+     1,  2,   2,  4,   3,  6,
+    // Row 1:
+     4,  8,   5, 10,   6, 12,
+    // Row 2:
+     7, 14,   8, 16,   9, 18,
+    // Row 3:
+    10, 20,  11, 22,  12, 24
+  };
+
+  // Construct B_data (dimensions: 3 x 2 x 2).
+  // For each row j and column of B:
+  // For j = 0:
+  //   B(0,0,:) = [ 1, 2 ]
+  //   B(0,1,:) = [ 2, 3 ]
+  // For j = 1:
+  //   B(1,0,:) = [ 3, 4 ]
+  //   B(1,1,:) = [ 4, 5 ]
+  // For j = 2:
+  //   B(2,0,:) = [ 5, 6 ]
+  //   B(2,1,:) = [ 6, 7 ]
+  uint64_t B_data[n * p * levels] = {
+    // j = 0:
+     1,  2,   2,  3,
+    // j = 1:
+     3,  4,   4,  5,
+    // j = 2:
+     5,  6,   6,  7
+  };
+
+  // Output C: dimensions: 4 x 2 x 2. Initialize to zero.
+  uint64_t C_data[m * p * levels] = { 0 };
+
+  matrix_t A = { A_data, m, n, levels };
+  matrix_t B = { B_data, n, p, levels };
+  matrix_t C = { C_data, m, p, levels };
+
+  component_wise_mult(&A, &B, &C);
+
+  // The expected result for each level is the same as for level_mat_mult:
+  // Level 0:
+  //   Row0: [22, 28]
+  //   Row1: [49, 64]
+  //   Row2: [76, 100]
+  //   Row3: [103, 136]
+  // Level 1:
+  //   Row0: [56, 68]
+  //   Row1: [128, 158]
+  //   Row2: [200, 248]
+  //   Row3: [272, 338]
+
+  std::cout << "Result (each row printed; each output element shows its 2-level values):" << std::endl;
+  // The output layout for C is: row-major with each element (i,j) containing its 2 levels consecutively.
+  // Index for element (i, j, level) = i * (p * levels) + j * levels + level.
+  for (size_t i = 0; i < m; i++) {
+    std::cout << "Row " << i << ":" << std::endl;
+    for (size_t j = 0; j < p; j++) {
+      std::cout << "  Col " << j << ": ";
+      for (size_t lvl = 0; lvl < levels; lvl++) {
+        size_t index = i * (p * levels) + j * levels + lvl;
+        std::cout << C_data[index] << " ";
+      }
+      std::cout << std::endl;
+    }
+  }
+  std::cout << std::endl;
+}
