@@ -86,3 +86,5 @@ Entry generate_entry(const uint64_t entry_id, const size_t entry_size, std::ifst
 size_t next_pow_of_2(const size_t n);
 
 size_t roundup_div(const size_t numerator, const size_t denominator);
+
+void fill_rand_arr(uint64_t *arr, size_t size);

@@ -5,6 +5,7 @@
 #include "client.h"
 #include "utils.h"
 #include "logging.h"
+#include "matrix.h"
 #include <cassert>
 #include <iostream>
 #include <bitset>
@@ -23,10 +24,12 @@ void print_func_name(std::string func_name) {
 }
 
 void run_tests() {
-  test_pir();
-  bfv_example();
-  serialization_example();
-  test_external_product();
+  // test_pir();
+  // bfv_example();
+  // serialization_example();
+  // test_external_product();
+
+  test_matrix_mult();
 }
 
 
@@ -461,3 +464,72 @@ void test_external_product() {
   END_EXPERIMENT();
   PRINT_RESULTS(); 
 }
+
+
+
+void test_matrix_mult() {
+  print_func_name(__FUNCTION__);
+  CLEAN_TIMER();
+  // for this test, I want to know if the matrix multiplication is memory bound
+  // or compute bound. If possible, please re-write this test case for GPU as
+  // well as it indicates the limit of the first dimension.
+
+  // Let's write the best code we can to compute (m x n) x (n x p) matrix
+  // multiplication for k times.
+  constexpr size_t m = 1 << 8; // the other_dim_sz
+  constexpr size_t n = DatabaseConstants::MaxFstDimSz; // say this is 256 for now.
+  constexpr size_t p = 2; // coz we have only 2 polynomials in the ciphertext.
+  constexpr size_t k = DatabaseConstants::PolyDegree;
+  constexpr size_t db_size = m * n * k * sizeof(uint64_t);  // we only care the big matrix
+  BENCH_PRINT("Matrix size: " << db_size / 1024 / 1024 << " MB");
+
+  // Allocate memory for A, B, out. 
+  // We interpret these as stacked (k) matrices.
+  std::vector<uint64_t> A_data(m * n * k);
+  std::vector<uint64_t> B_data(n * p * k);
+  std::vector<uint64_t> C_data(m * p * k);
+  // Fill A and B with random data
+  fill_rand_arr(A_data.data(), m * n * k); 
+  fill_rand_arr(B_data.data(), n * p * k);
+  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
+  // Wrap them in our matrix_t structures
+  matrix_t A_mat { A_data.data(), m, n, k };
+  matrix_t B_mat { B_data.data(), n, p, k };
+  matrix_t C_mat { C_data.data(), m, p, k };
+
+  // ===================== Performing matrix multiplication by levels ===================== 
+  // So, the idea is that we can do k many matrix matrix
+  // multiplications. Instead of doing the component wise multiplication, which
+  // I think is not cache friendly, matrix multiplication can benefit from local caching. 
+  TIME_START("Matrix multiplication");
+  level_mat_mult(&A_mat, &B_mat, &C_mat);
+  TIME_END("Matrix multiplication");
+
+  // some simple code to make sure it is not optimized out
+  size_t sum = 0;
+  for (size_t i = 0; i < m * p * k; i++) {
+    sum += C_data[i];
+  }
+  BENCH_PRINT("Sum: " << sum);
+  END_EXPERIMENT();
+  PRINT_RESULTS(1);
+  PRINT_BAR;
+
+  // ============= Old OnionPIR elementwise multiplication ==============
+  TIME_START("Old elementwise multiplication");
+  component_wise_mult(&A_mat, &B_mat, &C_mat); 
+  TIME_END("Old elementwise multiplication");
+  sum = 0;
+  for (size_t i = 0; i < m * p * k; i++) {
+    sum += C_data[i];
+  }
+  BENCH_PRINT("Sum: " << sum);
+  END_EXPERIMENT();
+  PRINT_RESULTS(2);
+
+  
+
+}
+
+
+

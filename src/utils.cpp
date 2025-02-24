@@ -211,3 +211,9 @@ size_t roundup_div(const size_t numerator, const size_t denominator) {
   }
   return (numerator + denominator - 1) / denominator;
 }
+
+void fill_rand_arr(uint64_t *arr, size_t size) {
+  std::ifstream rand_file("/dev/urandom", std::ios::binary);
+  rand_file.read(reinterpret_cast<char *>(arr), size * sizeof(uint64_t));
+  rand_file.close();
+}
