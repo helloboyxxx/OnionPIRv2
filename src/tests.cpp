@@ -9,28 +9,19 @@
 #include <cassert>
 #include <iostream>
 #include <bitset>
+#include <Eigen/Dense>
 
-#define EXPERIMENT_ITERATIONS 3
-
-void print_func_name(std::string func_name) {
-  PRINT_BAR;
-  #ifdef _DEBUG
-    std::cout << "                    "<< func_name << "(Debug build)" << std::endl;
-  #endif
-  #ifdef _BENCHMARK
-    std::cout << "                    "<< func_name << "(Benchmark build)" << std::endl;
-  #endif
-  PRINT_BAR;
-}
+#define EXPERIMENT_ITERATIONS 5
 
 void run_tests() {
-  test_pir();
+  // test_pir();
   // bfv_example();
   // serialization_example();
   // test_external_product();
-  // test_matrix_mult();
-  // level_mat_mult_demo();
-  // component_wise_mult_demo();
+  // test_single_mat_mult();
+  test_fst_dim_mult();
+  level_mat_mult_demo();
+  component_wise_mult_demo();
 }
 
 
@@ -467,8 +458,88 @@ void test_external_product() {
 }
 
 
+void test_single_mat_mult() {
+  print_func_name(__FUNCTION__);
+  CLEAN_TIMER();
+  // This is testing mat mat multiplication: A x B = C 
+  // with a special condition that the width of B is 2 and width of A is DatabaseConstants::MaxFstDimSz.
+  // Ideally, this tells the limit of the first dimension throughput.
+  constexpr size_t rows = 1 << 20; 
+  constexpr size_t cols = DatabaseConstants::MaxFstDimSz; 
+  constexpr size_t b_cols = 2; // two polynomials 
+  constexpr size_t db_size = rows * cols * sizeof(uint64_t);  // we only care the big matrix
+  BENCH_PRINT("Matrix size: " << db_size / 1024 / 1024 << " MB");
 
-void test_matrix_mult() {
+  // ============= level mat mult ==============
+  const std::string LV_MAT_MULT = "Matrix multiplication";
+  // Allocate memory for A, B, out.
+  std::vector<uint64_t> A_data(rows * cols);
+  std::vector<uint64_t> B_data(cols * b_cols);
+  std::vector<uint64_t> C_data(rows * b_cols);
+  std::vector<uint128_t> C_data128(rows * b_cols);
+  // Fill A and B with random data
+  fill_rand_arr(A_data.data(), rows * cols);
+  fill_rand_arr(B_data.data(), cols * b_cols);
+  // Wrap them in our matrix_t structures
+  matrix_t A_mat { A_data.data(), rows, cols, 1 };
+  matrix_t B_mat { B_data.data(), cols, b_cols, 1 };
+  matrix_t C_mat { C_data.data(), rows, b_cols, 1 };
+  matrix128_t C_mat128 { C_data128.data(), rows, b_cols, 1 };
+
+  TIME_START(LV_MAT_MULT);
+  level_mat_mult(&A_mat, &B_mat, &C_mat);
+  TIME_END(LV_MAT_MULT);
+  size_t sum = 0;
+  for (size_t i = 0; i < rows * b_cols; i++) { sum += C_data[i]; }
+  BENCH_PRINT("Sum: " << sum);
+  PRINT_BAR;
+
+  // ============= level mat mult 128 bits ==============
+  const std::string LV_MAT_MULT_128 = "Matrix multiplication 128 bits";
+  TIME_START(LV_MAT_MULT_128);
+  level_mat_mult_128(&A_mat, &B_mat, &C_mat128);
+  TIME_END(LV_MAT_MULT_128);
+  uint128_t sum128 = 0;
+  for (size_t i = 0; i < rows * b_cols; i++) { sum128 += C_data128[i]; }
+  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
+  PRINT_BAR;
+  A_data.resize(0); B_data.resize(0); C_data.resize(0); C_data128.resize(0);
+
+  // ============= Eigen mat mult ==============
+  const std::string EIGEN_MULT = "Matrix multiplication Eigen";
+  Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_eigen(rows, cols);
+  Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> B_eigen(cols, b_cols);
+  Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> C_eigen(rows, b_cols);
+
+  // Fill A and B with random data. The setRandom() function fills with values in the range [-1, 1].
+  A_eigen.setRandom();
+  B_eigen.setRandom();
+  TIME_START(EIGEN_MULT);
+  C_eigen.noalias() = A_eigen * B_eigen;
+  TIME_END(EIGEN_MULT);
+  uint64_t eigen_sum = C_eigen.sum();
+  BENCH_PRINT("Sum: " << eigen_sum);
+  PRINT_BAR;
+
+  // ============= Profiling the matrix multiplication ==============
+  END_EXPERIMENT();
+  PRINT_RESULTS();
+  PRINT_BAR;
+  double lv_time = GET_AVG_TIME(LV_MAT_MULT);
+  double eigen_time = GET_AVG_TIME(EIGEN_MULT);
+  double lv_time_128 = GET_AVG_TIME(LV_MAT_MULT_128);
+  double lv_throughput = db_size / (lv_time * 1000);
+  double eigen_throughput = db_size / (eigen_time * 1000);
+  double lv_throughput_128 = db_size / (lv_time_128 * 1000);
+  BENCH_PRINT("Level mat mult throughput: " << lv_throughput << " MB/s");
+  BENCH_PRINT("Eigen mat mult throughput: " << eigen_throughput << " MB/s");
+  BENCH_PRINT("Level mat mult 128 throughput: " << lv_throughput_128 << " MB/s");
+}
+
+
+
+
+void test_fst_dim_mult() {
   print_func_name(__FUNCTION__);
   CLEAN_TIMER();
   // for this test, I want to know if the matrix multiplication is memory bound
@@ -477,11 +548,12 @@ void test_matrix_mult() {
 
   // Let's write the best code we can to compute (m x n) x (n x p) matrix
   // multiplication for k times.
-  constexpr size_t m = 1 << 8; // the other_dim_sz
-  constexpr size_t n = DatabaseConstants::MaxFstDimSz; // say this is 256 for now.
+  constexpr size_t m = 1 << 9; // the other_dim_sz
+  constexpr size_t n = DatabaseConstants::MaxFstDimSz;
   constexpr size_t p = 2; // coz we have only 2 polynomials in the ciphertext.
   constexpr size_t k = DatabaseConstants::PolyDegree;
   constexpr size_t db_size = m * n * k * sizeof(uint64_t);  // we only care the big matrix
+  PirParams pir_params;
   BENCH_PRINT("Matrix size: " << db_size / 1024 / 1024 << " MB");
 
   // Allocate memory for A, B, out. 
@@ -492,11 +564,24 @@ void test_matrix_mult() {
   // Fill A and B with random data
   fill_rand_arr(A_data.data(), m * n * k); 
   fill_rand_arr(B_data.data(), n * p * k);
-  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
   // Wrap them in our matrix_t structures
   matrix_t A_mat { A_data.data(), m, n, k };
   matrix_t B_mat { B_data.data(), n, p, k };
   matrix_t C_mat { C_data.data(), m, p, k };
+  size_t sum = 0;
+
+  // ============= Old OnionPIR elementwise multiplication ==============
+  const std::string ELEM_MULT = "Old elementwise multiplication";
+  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
+  TIME_START(ELEM_MULT);
+  component_wise_mult(&A_mat, &B_mat, &C_mat); 
+  TIME_END(ELEM_MULT);
+  // some simple code to make sure it is not optimized out
+  sum = 0; 
+  for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
+  BENCH_PRINT("Sum: " << sum);
+  PRINT_BAR;
+
 
   // ===================== Performing matrix multiplication by levels ===================== 
   // So, the idea is that we can do k many matrix matrix
@@ -505,37 +590,93 @@ void test_matrix_mult() {
   // Note that these two functions are processing the data in a very different order. 
   // I asked ChatGPT to generate a two examples for me. 
   // You can check the component_wise_mult_demo and level_mat_mult_demo functions.
-
-  TIME_START("Matrix multiplication");
+  const std::string LV_MAT_MULT = "Matrix multiplication";
+  TIME_START(LV_MAT_MULT);
   level_mat_mult(&A_mat, &B_mat, &C_mat);
-  TIME_END("Matrix multiplication");
-
-  // some simple code to make sure it is not optimized out
-  size_t sum = 0;
+  TIME_END(LV_MAT_MULT);
+  sum = 0;
   for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
   PRINT_BAR;
 
-  // ============= Old OnionPIR elementwise multiplication ==============
-  TIME_START("Old elementwise multiplication");
-  component_wise_mult(&A_mat, &B_mat, &C_mat); 
-  TIME_END("Old elementwise multiplication");
+  // ============= level mat mult 128 bits ==============
+  const std::string LV_MAT_MULT_128 = "Matrix multiplication 128 bits";
+  std::vector<uint128_t> C_data_128(m * p * k);
+  matrix128_t C_mat_128 { C_data_128.data(), m, p, k };
+  TIME_START(LV_MAT_MULT_128);
+  level_mat_mult_128(&A_mat, &B_mat, &C_mat_128);
+  TIME_END(LV_MAT_MULT_128);
+  uint128_t sum128 = 0;
+  for (size_t i = 0; i < m * p * k; i++) { sum128 += C_data_128[i]; }
+  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
+  PRINT_BAR;
+
+  // ============= component wise mult 128 bits ==============
+  const std::string ELEM_MULT_128 = "Old elementwise multiplication 128 bits";
+  TIME_START(ELEM_MULT_128);
+  component_wise_mult_128(&A_mat, &B_mat, &C_mat_128);
+  TIME_END(ELEM_MULT_128);
+  sum128 = 0;
+  for (size_t i = 0; i < m * p * k; i++) { sum128 += C_data_128[i]; }
+  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
+  PRINT_BAR;
+
+  // ============= Level mat mult direct mod ==============
+  const std::string LV_MAT_MULT_DIRECT_MOD = "Matrix multiplication direct mod";
+  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
+  seal::Modulus mod = pir_params.get_coeff_modulus()[0];
+  TIME_START(LV_MAT_MULT_DIRECT_MOD);
+  level_mat_mult_direct_mod(&A_mat, &B_mat, &C_mat, mod);
+  TIME_END(LV_MAT_MULT_DIRECT_MOD);
+
+  // ============= level mat mult using Eigen ==============
+  const std::string EIGEN_MULT = "Matrix multiplication Eigen";
+  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
+  TIME_START(EIGEN_MULT);
+  level_mat_mult_eigen(&A_mat, &B_mat, &C_mat);
+  TIME_END(EIGEN_MULT);
   sum = 0;
   for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
+
+  // ============= level mat mult using armadillo ==============
+  const std::string ARMA_MULT = "Matrix multiplication Armadillo";
+  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
+  TIME_START(ARMA_MULT);
+  level_mat_mult_arma(&A_mat, &B_mat, &C_mat);
+  TIME_END(ARMA_MULT);
+
+  // ============= Profiling the matrix multiplication ==============
   END_EXPERIMENT();
   PRINT_RESULTS();
-  PRINT_BAR; 
+  PRINT_BAR;
 
   // Let's calculate the throughput of the matrix multiplication, express in MB/s
-  double level_mat_mult_time = GET_AVG_TIME("Matrix multiplication");
-  double old_elementwise_mult_time = GET_AVG_TIME("Old elementwise multiplication");
-  double level_mat_mult_throughput = db_size / (level_mat_mult_time * 1000);
-  double old_elementwise_mult_throughput = db_size / (old_elementwise_mult_time * 1000); 
-  BENCH_PRINT("Level mat mult throughput: " << (size_t) level_mat_mult_throughput << " MB/s");
-  BENCH_PRINT("Old elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
+  double old_elementwise_mult_time = GET_AVG_TIME(ELEM_MULT);
+  double level_mat_mult_time = GET_AVG_TIME(LV_MAT_MULT);
+  double level_mat_mult_128_time = GET_AVG_TIME(LV_MAT_MULT_128);
+  double elementwise_mult_128_time = GET_AVG_TIME(ELEM_MULT_128);
+  double level_mat_mult_direct_mod_time = GET_AVG_TIME(LV_MAT_MULT_DIRECT_MOD);
+  double level_mat_mult_eigen_time = GET_AVG_TIME(EIGEN_MULT);
+  double level_mat_mult_arma_time = GET_AVG_TIME(ARMA_MULT);
 
+  double old_elementwise_mult_throughput = db_size / (old_elementwise_mult_time * 1000); 
+  double level_mat_mult_throughput = db_size / (level_mat_mult_time * 1000);
+  double level_mat_mult_128_throughput = db_size / (level_mat_mult_128_time * 1000);
+  double elementwise_mult_128_throughput = db_size / (elementwise_mult_128_time * 1000);
+  double level_mat_mult_direct_mod_throughput = db_size / (level_mat_mult_direct_mod_time * 1000);
+  double level_mat_mult_eigen_throughput = db_size / (level_mat_mult_eigen_time * 1000);
+  double level_mat_mult_arma_throughput = db_size / (level_mat_mult_arma_time * 1000);
+
+  BENCH_PRINT("Old elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
+  BENCH_PRINT("Level mat mult throughput: " << (size_t) level_mat_mult_throughput << " MB/s");
+  BENCH_PRINT("Level mat mult 128 throughput: " << (size_t)level_mat_mult_128_throughput << " MB/s");
+  BENCH_PRINT("elementwise mult 128 throughput: " << (size_t)elementwise_mult_128_throughput << " MB/s");
+  BENCH_PRINT("Level mat mult direct mod throughput: " << (size_t)level_mat_mult_direct_mod_throughput << " MB/s");
+  BENCH_PRINT("Level mat mult Eigen throughput: " << (size_t)level_mat_mult_eigen_throughput << " MB/s");
+  BENCH_PRINT("Level mat mult Armadillo throughput: " << (size_t)level_mat_mult_arma_throughput << " MB/s");
 }
+
 
 void level_mat_mult_demo() {
   print_func_name(__FUNCTION__);

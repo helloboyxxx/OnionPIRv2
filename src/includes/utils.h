@@ -23,6 +23,18 @@
 #endif
 
 
+
+inline void print_func_name(std::string func_name) {
+  PRINT_BAR;
+  #ifdef _DEBUG
+    std::cout << "                    "<< func_name << "(Debug build)" << std::endl;
+  #endif
+  #ifdef _BENCHMARK
+    std::cout << "                    "<< func_name << "(Benchmark build)" << std::endl;
+  #endif
+  PRINT_BAR;
+}
+
 template <typename T> std::string to_string(T x) {
   std::string ret;
   if (x == 0) {

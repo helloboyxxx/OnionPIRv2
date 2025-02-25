@@ -14,9 +14,9 @@ void serialization_example();
 
 // Other tests
 void test_prime_gen();
-void ideal_fst_dim();
 
 // matrix tests
-void test_matrix_mult();
+void test_single_mat_mult();
+void test_fst_dim_mult();
 void level_mat_mult_demo();
 void component_wise_mult_demo();

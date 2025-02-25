@@ -1,18 +1,18 @@
 cmake_minimum_required(VERSION 3.13)
-# Set build type to benchmark if not specified
+
+# Set build type to Benchmark if not specified
 if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Benchmark)
 endif()
 
-
-# automatically enables all available optimizations for your local machine, including AVX2 and AVX512
+# Automatically enables all available optimizations for your local machine, including AVX2 and AVX512
 set(CMAKE_CXX_FLAGS "-O3 -g -std=c++17 -MD -march=native")
 
-# add perf when building in Debug mode
+
+# Add perf when building in Debug mode
 if (CMAKE_BUILD_TYPE MATCHES Debug)
     set(CMAKE_CXX_FLAGS "-g -pg -O2")  # Enable profiling flags
 endif()
-
 
 option(NOAVX512 "Disable AVX-512" OFF)
 option(NOAVX2 "Disable AVX2" OFF)
@@ -25,7 +25,6 @@ if (NOAVX2)
     add_compile_options(-mno-avx2)
 endif()
 
-
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -D_DEBUG")
 set(IS_BENCHMARK_BUILD CMAKE_BUILD_TYPE STREQUAL "Benchmark")
 if (${IS_BENCHMARK_BUILD})
@@ -36,9 +35,18 @@ elseif (CMAKE_BUILD_TYPE MATCHES Debug)
 endif ()
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 project(Onion-PIR)
+
 # Automatically find all source files in src/
 file(GLOB_RECURSE SRC_FILES src/*.cpp)
 add_executable(Onion-PIR ${SRC_FILES})
+
+# Find and link SEAL library
 find_package(SEAL 4.1 REQUIRED)
-target_link_libraries(Onion-PIR SEAL::seal)
+target_link_libraries(Onion-PIR PUBLIC SEAL::seal)
+
+# Find and link Eigen library
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+target_link_libraries(Onion-PIR PUBLIC Eigen3::Eigen)
+
+# Include directories
 target_include_directories(Onion-PIR PUBLIC src/includes)

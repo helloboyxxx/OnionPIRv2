@@ -30,7 +30,7 @@ void TimerLogger::endExperiment() {
 }
 
 // Print timing results for a specific experiment or all experiments
-void TimerLogger::printResults(size_t expId) {
+void TimerLogger::printResults(int expId) {
     if (experimentRecords.empty()) {
         std::cout << "No experiments recorded.\n";
         return;

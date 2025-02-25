@@ -150,7 +150,6 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
   const auto &context = pir_params_.get_context();
   const auto &context_data = context.first_context_data();
   const auto ntt_tables = context_data->small_ntt_tables();
-  constexpr size_t bits_per_uint64_sz = 64;
 
   seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
   auto pool = seal::MemoryManager::GetPool();

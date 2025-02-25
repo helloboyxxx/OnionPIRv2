@@ -89,13 +89,15 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   std::fill(inter_res_.begin(), inter_res_.end(), 0);
 
   // reallocate the query data to a continuous memory 
+  TIME_START("Query data preparation");
   std::vector<uint64_t> query_data(fst_dim_sz * 2 * coeff_val_cnt);
-  for (size_t i = 0; i < fst_dim_sz; i++) {
-    std::copy(fst_dim_query[i].data(0), fst_dim_query[i].data(0) + coeff_val_cnt, query_data.data() + i * 2 * coeff_val_cnt);
-    std::copy(fst_dim_query[i].data(1), fst_dim_query[i].data(1) + coeff_val_cnt, query_data.data() + i * 2 * coeff_val_cnt + coeff_val_cnt);
+  for (size_t i = 0; i < coeff_val_cnt; i++) {
+    for (size_t j = 0; j < fst_dim_sz; j++) {
+      query_data[i * 2] = fst_dim_query[j].data(0)[i];
+      query_data[i * 2 + 1] = fst_dim_query[j].data(1)[i];
+    }
   }
-
-
+  TIME_END("Query data preparation");
 
   /*
   I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
@@ -129,11 +131,10 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   // Now, let's try to use the level_mat_mult function to do the same thing.
 
   // prepare the matrices
-  matrix_t db_mat { db_aligned_.get(), other_dim_sz, fst_dim_sz, rns_mod_cnt };
+  matrix_t db_mat { db_aligned_.get(), other_dim_sz, fst_dim_sz, coeff_val_cnt };
   matrix_t query_mat { query_data.data(), fst_dim_sz, 2, coeff_val_cnt };
   matrix128_t inter_res_mat { inter_res_.data(), other_dim_sz, 2, coeff_val_cnt };
   level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
-  
   TIME_END(CORE_TIME);
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
@@ -190,7 +191,9 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
     TIME_START(EXTERN_PROD_TOT_TIME);
     data_gsw_.external_product(selection_cipher, y, y);  // b * (y - x)
     TIME_END(EXTERN_PROD_TOT_TIME);
+    TIME_START(EXTERN_NTT_TIME);
     evaluator_.transform_from_ntt_inplace(y);
+    TIME_END(EXTERN_NTT_TIME);
     evaluator_.add_inplace(result[i], y);  // x + b * (y - x)
   }
   result.resize(block_size);
@@ -346,7 +349,6 @@ void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_
   }
 
   const size_t bits_per_coeff = pir_params_.get_num_bits_per_coeff();
-  const size_t num_bits_per_plaintext = pir_params_.get_num_bits_per_plaintext();
   const size_t num_entries_per_plaintext = pir_params_.get_num_entries_per_plaintext();
   const size_t num_pt_per_chunk = chunk_entry.size() / num_entries_per_plaintext;  // number of plaintexts in the new chunk
   const uint128_t coeff_mask = (uint128_t(1) << (bits_per_coeff)) - 1;  // bits_per_coeff many 1s
@@ -414,11 +416,7 @@ void PirServer::realign_db() {
   // realign the database to the first dimension
   const size_t fst_dim_sz = pir_params_.get_fst_dim_sz();
   const size_t other_dim_sz = pir_params_.get_other_dim_sz();
-  const size_t num_en_per_pt = pir_params_.get_num_entries_per_plaintext();
-  const size_t entry_size = pir_params_.get_entry_size();
   const size_t coeff_val_cnt = pir_params_.get_coeff_val_cnt();
-  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
-  const size_t one_ct_sz = 2 * coeff_val_cnt; // Ciphertext has two polynomials
 
   size_t aligned_db_idx = 0;
   for (size_t level = 0; level < coeff_val_cnt; level++) {

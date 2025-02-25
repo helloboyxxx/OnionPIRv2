@@ -84,7 +84,7 @@ public:
     void endExperiment();
 
     // Print results for specific experiment. -1 to print all experiments
-    void printResults(size_t expId = -1);
+    void printResults(int expId = -1);
 
     // Compute and print average time across experiments
     void printAverageResults();

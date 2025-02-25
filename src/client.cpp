@@ -60,7 +60,6 @@ PirQuery PirClient::generate_query(const size_t entry_index) {
   const size_t plaintext_index = get_database_plain_index(entry_index);
   std::vector<size_t> query_indices = get_query_indices(plaintext_index);
   PRINT_INT_ARRAY("\t\tquery_indices", query_indices.data(), query_indices.size());
-  const size_t msg_size = dims_[0] + pir_params_.get_l() * (dims_.size() - 1);
   const size_t bits_per_ciphertext = 1 << get_expan_height(); // padding msg_size to the next power of 2
 
   // Algorithm 1 from the OnionPIR Paper
