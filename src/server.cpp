@@ -33,7 +33,7 @@ PirServer::~PirServer() {
 
 // Fills the database with random data
 void PirServer::gen_data() {
-
+  BENCH_PRINT("Generating random data for the server database...");
   std::ifstream random_file("/dev/urandom", std::ios::binary);
   if (!random_file.is_open()) {
     throw std::invalid_argument("Unable to open /dev/urandom");
@@ -61,7 +61,6 @@ void PirServer::gen_data() {
   }
   random_file.close();
   // transform the ntt_db_ from coefficient form to ntt form. db_ is not transformed.
-  BENCH_PRINT("\nTransforming the database to NTT form...");
   preprocess_ntt();
   realign_db();
 }
@@ -91,49 +90,30 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   // reallocate the query data to a continuous memory 
   TIME_START("Query data preparation");
   std::vector<uint64_t> query_data(fst_dim_sz * 2 * coeff_val_cnt);
+  size_t query_data_idx = 0;
   for (size_t i = 0; i < coeff_val_cnt; i++) {
     for (size_t j = 0; j < fst_dim_sz; j++) {
-      query_data[i * 2] = fst_dim_query[j].data(0)[i];
-      query_data[i * 2 + 1] = fst_dim_query[j].data(1)[i];
+      query_data[query_data_idx] = fst_dim_query[j].data(0)[i];
+      query_data[query_data_idx + 1] = fst_dim_query[j].data(1)[i];
+      query_data_idx += 2;
     }
   }
   TIME_END("Query data preparation");
 
   /*
   I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
-  vector. The goal is to calculate DB * fst_dim_query, but each multiplication is
-  a vector-vector elementwise multiplication.
+  vector. The goal is to calculate DB * fst_dim_query, but each multiplication
+  is a vector-vector elementwise multiplication.
   TODO: I believe this can be optimized. Currently, the throughput is same as
-  the vec-vec elementwise multiplication. However, ideally, the first dimension
-  is equivalent to coeff_val_cnt many mat-vec multiplications.
+  the vec-vec elementwise multiplication because we are not doing tiling now.
+  However, ideally, the first dimension is equivalent to coeff_val_cnt many
+  mat-vec multiplications.
   */
-  TIME_START(CORE_TIME);
-
-  // size_t row, col, elem_id;
-  // uint64_t *db_ptr;
-  // uint64_t *q0, *q1;
-  // uint128_t *inter_ptr0, *inter_ptr1;
-  // for (row = 0; row < other_dim_sz; ++row) {
-  //   for (col = 0; col < fst_dim_sz; ++col) {
-  //     db_ptr = db_[row * fst_dim_sz + col].value().data();
-  //     q0 = fst_dim_query[col].data(0); // query polynomial 0
-  //     q1 = fst_dim_query[col].data(1); // query polynomial 1
-  //     inter_ptr0 = inter_res_.data() + row * one_ct_sz; // intermediate result ptr for polynomial 0
-  //     inter_ptr1 = inter_res_.data() + row * one_ct_sz + coeff_val_cnt;
-  //     #pragma GCC unroll 32
-  //     for (elem_id = 0; elem_id < coeff_val_cnt; ++elem_id) {
-  //       inter_ptr0[elem_id] += static_cast<uint128_t>(q0[elem_id]) * db_ptr[elem_id];
-  //       inter_ptr1[elem_id] += static_cast<uint128_t>(q1[elem_id]) * db_ptr[elem_id];
-  //     }
-  //   }
-  // }
-
-  // Now, let's try to use the level_mat_mult function to do the same thing.
-
   // prepare the matrices
   matrix_t db_mat { db_aligned_.get(), other_dim_sz, fst_dim_sz, coeff_val_cnt };
   matrix_t query_mat { query_data.data(), fst_dim_sz, 2, coeff_val_cnt };
   matrix128_t inter_res_mat { inter_res_.data(), other_dim_sz, 2, coeff_val_cnt };
+  TIME_START(CORE_TIME);
   level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
   TIME_END(CORE_TIME);
 
@@ -141,38 +121,83 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   TIME_START(FST_DELEY_MOD_TIME);
   std::vector<seal::Ciphertext> result; // output vector
   result.reserve(other_dim_sz);
-  seal::Ciphertext ct_acc;
-  for (size_t j = 0; j < other_dim_sz; ++j) {
-    ct_acc = fst_dim_query[fst_dim_sz - 1]; // just a quick way to construct a new ciphertext. Will overwrite data in it.
-    for (size_t poly_id = 0; poly_id < 2; poly_id++) {   // Each ciphertext has two polynomials
-      auto mod_acc_ptr = ct_acc.data(poly_id); // pointer to store the modulus of accumulated value
-      const size_t inter_shift = j * one_ct_sz + poly_id * coeff_val_cnt;
-      auto buff_ptr = inter_res_.data() + inter_shift;
-      
-      for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {  // RNS has two moduli
-        // Now we calculate the modulus for the accumulated value.
-        const size_t rns_padding = (mod_id * DatabaseConstants::PolyDegree);
-        for (size_t coeff_id = 0; coeff_id < DatabaseConstants::PolyDegree; coeff_id++) {  // for each coefficient, we mod it with RNS modulus
-          // the following is equivalent to: mod_acc_ptr[coeff_id + rns_padding] = buff_ptr[coeff_id + rns_padding] % coeff_modulus[mod_id]
-          auto x = buff_ptr[coeff_id + rns_padding];
-          uint64_t raw[2] = {static_cast<uint64_t>(x), static_cast<uint64_t>(x >> 64)};
-          mod_acc_ptr[coeff_id + rns_padding] = util::barrett_reduce_128(raw, coeff_modulus[mod_id]);
-        }
-      }
-    }
-    TIME_END(FST_DELEY_MOD_TIME);
-    TIME_START(FST_NTT_TIME);
-    evaluator_.transform_from_ntt_inplace(ct_acc);  // transform the result back to coefficient form
-    TIME_END(FST_NTT_TIME);
-    result.push_back(ct_acc);
-  }
+  delay_modulus(result, inter_res_.data());
+  TIME_END(FST_DELEY_MOD_TIME);
 
   return result;
 }
 
-void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
-                                                              GSWCiphertext &selection_cipher) {
+
+void PirServer::delay_modulus(std::vector<seal::Ciphertext> &result, const uint128_t *__restrict inter_res) {
+  const size_t other_dim_sz = pir_params_.get_other_dim_sz();
+  const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  const auto coeff_modulus = pir_params_.get_coeff_modulus();
+  const size_t inter_padding = other_dim_sz * 2;  // distance between coefficients in inter_res
   
+  // We need to unroll the loop to process multiple ciphertexts at once.
+  // Otherwise, this function is basically reading the intermediate result 
+  // with a stride of inter_padding, which causes many cache misses.
+  constexpr size_t unroll_factor = 16;
+
+  // Process ciphertexts in blocks of unroll_factor.
+  for (size_t j = 0; j < other_dim_sz; j += unroll_factor) {
+    // Create an array of ciphertexts.
+    std::array<seal::Ciphertext, unroll_factor> cts;
+    for (size_t idx = 0; idx < unroll_factor; idx++) {
+      cts[idx] = seal::Ciphertext(context_);
+      cts[idx].resize(2);  // each ciphertext stores 2 polynomials
+    }
+
+    // Compute the base indices for each ciphertext’s two intermediate parts.
+    // For ciphertext idx, poly0 uses base index: j*2 + 2*idx and poly1 uses j*2 + 2*idx + 1.
+    std::array<size_t, unroll_factor> base0, base1;
+    for (size_t idx = 0; idx < unroll_factor; idx++) {
+      base0[idx] = j * 2 + 2 * idx;
+      base1[idx] = j * 2 + 2 * idx + 1;
+    }
+
+    // Initialize intermediate indices and ciphertext write indices.
+    std::array<size_t, unroll_factor> inter_idx0 = {0};  // for poly0 of each ciphertext
+    std::array<size_t, unroll_factor> inter_idx1 = {0};  // for poly1 of each ciphertext
+    std::array<size_t, unroll_factor> ct_idx0    = {0};  // write index for poly0
+    std::array<size_t, unroll_factor> ct_idx1    = {0};  // write index for poly1
+
+    // Process each modulus and coefficient.
+    for (size_t mod_id = 0; mod_id < rns_mod_cnt; mod_id++) {
+      const seal::Modulus &modulus = coeff_modulus[mod_id];
+      for (size_t coeff_id = 0; coeff_id < coeff_count; coeff_id++) {
+        #pragma unroll
+        for (size_t idx = 0; idx < unroll_factor; idx++) {
+          // Process polynomial 0 for ciphertext idx.
+          uint128_t x0 = inter_res[ base0[idx] + inter_idx0[idx] * inter_padding ];
+          uint64_t raw0[2] = { static_cast<uint64_t>(x0), static_cast<uint64_t>(x0 >> 64) };
+          cts[idx].data(0)[ ct_idx0[idx]++ ] = util::barrett_reduce_128(raw0, modulus);
+
+          // Process polynomial 1 for ciphertext idx.
+          uint128_t x1 = inter_res[ base1[idx] + inter_idx1[idx] * inter_padding ];
+          uint64_t raw1[2] = { static_cast<uint64_t>(x1), static_cast<uint64_t>(x1 >> 64) };
+          cts[idx].data(1)[ ct_idx1[idx]++ ] = util::barrett_reduce_128(raw1, modulus);
+
+          // Advance intermediate indices.
+          inter_idx0[idx]++;
+          inter_idx1[idx]++;
+        }
+      }
+    }
+
+    // Mark each ciphertext as being in NTT form and then transform back.
+    for (size_t idx = 0; idx < unroll_factor; idx++) {
+      cts[idx].is_ntt_form() = true;
+      evaluator_.transform_from_ntt_inplace(cts[idx]);
+      result.emplace_back(std::move(cts[idx]));
+    }
+  }
+}
+
+void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
+                                     GSWCiphertext &selection_cipher) {
+
   /**
    * Note that we only have a single GSWCiphertext for this selection.
    * Here is the logic:
@@ -403,6 +428,7 @@ void PirServer::push_database_chunk(std::vector<Entry> &chunk_entry, const size_
 }
 
 void PirServer::preprocess_ntt() {
+  BENCH_PRINT("\nTransforming the database to NTT form...");
   // tutorial on Number Theoretic Transform (NTT): https://youtu.be/Pct3rS4Y0IA?si=25VrCwBJuBjtHqoN
   for (size_t i = 0; i < num_pt_; ++i) {
     if (db_[i].has_value()) {
@@ -413,6 +439,7 @@ void PirServer::preprocess_ntt() {
 }
 
 void PirServer::realign_db() {
+  BENCH_PRINT("Realigning the database...");
   // realign the database to the first dimension
   const size_t fst_dim_sz = pir_params_.get_fst_dim_sz();
   const size_t other_dim_sz = pir_params_.get_other_dim_sz();

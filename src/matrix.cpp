@@ -5,8 +5,8 @@
 
 
 void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
-  const size_t rows = A->rows; // multiple of 32
-  const size_t cols = A->cols; // multiple of 32
+  const size_t rows = A->rows; 
+  const size_t cols = A->cols;
   const size_t levels = A->levels;
   const uint64_t *A_data = A->data;
   const uint64_t *B_data = B->data;
@@ -72,35 +72,33 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
 
 
 void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
-  const size_t rows = A->rows; // multiple of 32
-  const size_t cols = A->cols; // multiple of 32
+  // Using restrict qualifiers to tell the compiler there is no aliasing.
+  const size_t rows   = A->rows;
+  const size_t cols   = A->cols;
   const size_t levels = A->levels;
-  const uint64_t *A_data = A->data;
-  const uint64_t *B_data = B->data;
-  uint128_t *out_data = out->data;
+  const uint64_t * __restrict A_data = A->data;
+  const uint64_t * __restrict B_data = B->data;
+  uint128_t * __restrict out_data = out->data;
 
-  // We always assume B has exactly two columns. Because the BFV ciphertext has two polynomials. 
-  // This assumption keeps the code simple.
+  // We always assume B has exactly two columns (for BFV ciphertext).
   if (B->cols != 2) { return; } 
 
-  // define pointers
-  const uint64_t *A_ptr;
-  const uint64_t *B_ptr;
-  uint128_t *C_ptr;
+  // Pointer variables for each level.
+  const uint64_t * __restrict A_ptr;
+  const uint64_t * __restrict B_ptr;
+  uint128_t * __restrict C_ptr;
   uint64_t db0, db1, db2, db3;
   uint128_t tmp0, tmp1, tmp2, tmp3, tmp4, tmp5, tmp6, tmp7;
-  size_t i, j, level; 
+  size_t i, j, lvl;
 
-  // For each "level," we do one standard mat-mat multiplication.
-  // A(level) is m-by-n, B(level) is n-by-2, out(level) is m-by-2
-  for (level = 0; level < levels; ++level) {
-    // Offsets into the flat arrays for this level
-    A_ptr = A_data + level * (rows * cols);
-    B_ptr = B_data + level * (cols * 2);
-    C_ptr = out_data + level * (rows * 2);
+  // Process each "level" separately.
+  for (lvl = 0; lvl < levels; ++lvl) {
+    A_ptr = A_data + lvl * (rows * cols);
+    B_ptr = B_data + lvl * (cols * 2);
+    C_ptr = out_data + lvl * (rows * 2);
 
-    // Then we can compute a normal matrix multiplication
-    // This is a slight variation of the 
+    // We read multiple rows of A at a time to improve cache locality.
+    // The reason is that we can save reading B and C multiple times.
     for (i = 0; i < rows; i += 4) {
       tmp0 = 0; tmp1 = 0; tmp2 = 0; tmp3 = 0;
       tmp4 = 0; tmp5 = 0; tmp6 = 0; tmp7 = 0;
@@ -114,17 +112,18 @@ void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
         tmp4 += (uint128_t)db2 * B_ptr[j * 2]; tmp5 += (uint128_t)db2 * B_ptr[j * 2 + 1];
         tmp6 += (uint128_t)db3 * B_ptr[j * 2]; tmp7 += (uint128_t)db3 * B_ptr[j * 2 + 1];
       }
-      C_ptr[i * 2] += tmp0; C_ptr[i * 2 + 1] += tmp1;
+      // Accumulate the computed values into the output.
+      C_ptr[i * 2 + 0] += tmp0; C_ptr[i * 2 + 1] += tmp1;
       C_ptr[i * 2 + 2] += tmp2; C_ptr[i * 2 + 3] += tmp3;
       C_ptr[i * 2 + 4] += tmp4; C_ptr[i * 2 + 5] += tmp5;
       C_ptr[i * 2 + 6] += tmp6; C_ptr[i * 2 + 7] += tmp7;
     }
-  } // end for(level)
+  }
 }
 
 void level_mat_mult_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const seal::Modulus mod) {
-  const size_t rows = A->rows; // multiple of 32
-  const size_t cols = A->cols; // multiple of 32
+  const size_t rows = A->rows;
+  const size_t cols = A->cols;
   const size_t levels = A->levels;
   const uint64_t *A_data = A->data;
   const uint64_t *B_data = B->data;
@@ -187,8 +186,8 @@ void level_mat_mult_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const se
 
 
 void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
-  const size_t m = A->rows; // multiple of 32
-  const size_t n = A->cols; // multiple of 32
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
   const size_t p = B->cols; // p=2 (assumed)
   const size_t levels = A->levels;
   uint64_t *A_data = A->data;
@@ -213,8 +212,8 @@ void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
 }
 
 void component_wise_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
-  const size_t m = A->rows; // multiple of 32
-  const size_t n = A->cols; // multiple of 32
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
   const size_t p = B->cols; // p=2 (assumed)
   const size_t levels = A->levels;
   uint64_t *A_data = A->data;
@@ -241,8 +240,8 @@ void component_wise_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
 
 
 void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out) {
-    const size_t rows = A->rows;   // multiple of 32
-    const size_t cols = A->cols;   // multiple of 32
+    const size_t rows = A->rows;   
+    const size_t cols = A->cols;   
     const size_t p = B->cols;      // p=2 (assumed)
     const size_t levels = A->levels;
     const uint64_t* A_data = A->data;
@@ -273,8 +272,8 @@ void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out) {
 
 
 void level_mat_mult_arma(matrix_t *A, matrix_t *B, matrix_t *out) {
-    const size_t rows = A->rows;   // multiple of 32
-    const size_t cols = A->cols;   // multiple of 32
+    const size_t rows = A->rows;   
+    const size_t cols = A->cols;   
     const size_t p = B->cols;      // p=2 (assumed)
     const size_t levels = A->levels;
     uint64_t* A_data = A->data;

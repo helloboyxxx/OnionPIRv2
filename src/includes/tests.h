@@ -19,4 +19,5 @@ void test_prime_gen();
 void test_single_mat_mult();
 void test_fst_dim_mult();
 void level_mat_mult_demo();
+void level_mat_mult128_demo();
 void component_wise_mult_demo();

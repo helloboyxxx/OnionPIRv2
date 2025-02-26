@@ -114,7 +114,7 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
       TIME_START(RIGHT_SHIFT_TIME);
       for (size_t k = 0; k < coeff_count; k++) {
         auto ptr = row.data() + k * rns_mod_cnt;
-        // ! This right shift is very time consuming. About 3 times slower than the actual external product multiplication.
+        // ! when we have rns_mod_cnt > 1, this function is slow. Please compare to the single mod version.
         seal::util::right_shift_uint(ptr, p * base_log2_, rns_mod_cnt, ptr); // shift right by p * base_log2
         ptr[0] &= mask;
         for (size_t i = 1; i < rns_mod_cnt; i++) {

@@ -4,7 +4,6 @@
 
 namespace DatabaseConstants {
   constexpr size_t MaxFstDimSz = 512; // Maximum size of the first dimension. Actual size can only be smaller.
-  constexpr size_t TileSz = 64;   // tile size for the first dimension multiplication.
 
   // ============================================================================================
   // ! THE FOLLOWING FEW CHOICES ARE FOR POLYNOMIAL DEGREE = 4096

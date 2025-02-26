@@ -69,6 +69,12 @@ private:
     database.
   */
   std::vector<seal::Ciphertext> evaluate_first_dim(std::vector<seal::Ciphertext> &selection_vector);
+
+  // This is a helper for evaluate the first dimension. 
+  // Instead of doing a mod operation after every addition and multiplication during the matrix multiplication,
+  // we delay the mod operation until the end. We also use barret reduction for the mod operation.
+  void delay_modulus(std::vector<seal::Ciphertext> &result, const uint128_t *__restrict inter_res);
+
   /*!
     Transforms the plaintexts in the database into their NTT representation.
     This speeds up computation but takes up more memory.

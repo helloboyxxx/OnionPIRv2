@@ -14,14 +14,15 @@
 #define EXPERIMENT_ITERATIONS 5
 
 void run_tests() {
-  // test_pir();
+  test_pir();
   // bfv_example();
   // serialization_example();
   // test_external_product();
   // test_single_mat_mult();
   test_fst_dim_mult();
-  level_mat_mult_demo();
-  component_wise_mult_demo();
+  // level_mat_mult_demo();
+  // level_mat_mult128_demo();
+  // component_wise_mult_demo();
 }
 
 
@@ -100,9 +101,9 @@ void test_pir() {
     END_EXPERIMENT();
     // ============= PRINTING RESULTS ===============    
     DEBUG_PRINT("\t\tWanted/result/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
-    #ifdef _DEBUG
+    // #ifdef _DEBUG
     PRINT_RESULTS(i+1);
-    #endif
+    // #endif
 
     if (entry_is_equal(result_entry, actual_entry)) {
       // print a green success message
@@ -124,7 +125,7 @@ void test_pir() {
   
 
   // ============= PRINTING FINAL RESULTS ===============]
-  BENCH_PRINT("                       FINAL RESULTS                         ")
+  BENCH_PRINT("                                FINAL RESULTS")
   PRINT_BAR;
   BENCH_PRINT("Success rate: " << success_count << "/" << EXPERIMENT_ITERATIONS);
   BENCH_PRINT("galois key size: " << galois_key_size << " bytes");
@@ -571,7 +572,7 @@ void test_fst_dim_mult() {
   size_t sum = 0;
 
   // ============= Old OnionPIR elementwise multiplication ==============
-  const std::string ELEM_MULT = "Old elementwise multiplication";
+  const std::string ELEM_MULT = "elementwise multiplication";
   std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
   TIME_START(ELEM_MULT);
   component_wise_mult(&A_mat, &B_mat, &C_mat); 
@@ -668,10 +669,10 @@ void test_fst_dim_mult() {
   double level_mat_mult_eigen_throughput = db_size / (level_mat_mult_eigen_time * 1000);
   double level_mat_mult_arma_throughput = db_size / (level_mat_mult_arma_time * 1000);
 
-  BENCH_PRINT("Old elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
+  BENCH_PRINT("elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
   BENCH_PRINT("Level mat mult throughput: " << (size_t) level_mat_mult_throughput << " MB/s");
   BENCH_PRINT("Level mat mult 128 throughput: " << (size_t)level_mat_mult_128_throughput << " MB/s");
-  BENCH_PRINT("elementwise mult 128 throughput: " << (size_t)elementwise_mult_128_throughput << " MB/s");
+  BENCH_PRINT("Old elementwise mult 128 throughput: " << (size_t)elementwise_mult_128_throughput << " MB/s");
   BENCH_PRINT("Level mat mult direct mod throughput: " << (size_t)level_mat_mult_direct_mod_throughput << " MB/s");
   BENCH_PRINT("Level mat mult Eigen throughput: " << (size_t)level_mat_mult_eigen_throughput << " MB/s");
   BENCH_PRINT("Level mat mult Armadillo throughput: " << (size_t)level_mat_mult_arma_throughput << " MB/s");
@@ -763,6 +764,61 @@ void level_mat_mult_demo() {
     }
     std::cout << std::endl;
   }
+}
+
+void level_mat_mult128_demo() {
+    constexpr size_t m = 8, n = 8, p = 2, levels = 2;
+    uint64_t A_data[m*n*levels];
+    
+    uint64_t B_data[n*p*levels];
+    uint128_t out_data[m*p*levels] = {0};    
+    // Initialize with random values 0-9
+    for (auto& val : A_data) val = rand() % 10;
+    for (auto& val : B_data) val = rand() % 10;
+
+    matrix_t A = {A_data, m, n, levels};
+    matrix_t B = {B_data, n, p, levels};
+    matrix128_t out = {out_data, m, p, levels};
+    level_mat_mult_128(&A, &B, &out);
+
+    // Print results level by level
+    for (size_t lvl = 0; lvl < levels; ++lvl) {
+        std::cout << "=== LEVEL " << lvl << " ===" << std::endl;
+        
+        // Print A
+        std::cout << "Matrix A:\n";
+        const uint64_t* A_lvl = A_data + lvl*m*n;
+        for (size_t i = 0; i < m; ++i) {
+            for (size_t j = 0; j < n; ++j) {
+                std::cout << A_lvl[i*n + j] << "\t";
+            }
+            std::cout << std::endl;
+        }
+
+        // Print B
+        std::cout << "\nMatrix B:\n";
+        const uint64_t* B_lvl = B_data + lvl*n*p;
+        for (size_t i = 0; i < n; ++i) {
+            for (size_t j = 0; j < p; ++j) {
+                std::cout << B_lvl[i*p + j] << "\t";
+            }
+            std::cout << std::endl;
+        }
+
+        // Print results
+        std::cout << "\nResult:\n";
+        const uint128_t* out_lvl = out_data + lvl*m*p;
+        for (size_t i = 0; i < m; ++i) {
+            std::cout << "Row " << i << ":\t";
+            for (size_t j = 0; j < p; ++j) {
+                // print_uint128(out_lvl[i*p + j]);
+                std::cout << uint128_to_string(out_lvl[i*p + j]) << "\t";
+                std::cout << "\t";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << "\n\n";
+    }
 }
 
 
