@@ -105,7 +105,7 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
     TIME_START(EXTERN_MEMCPY);
     memcpy(data.data(), poly_ptr, coeff_count * rns_mod_cnt * sizeof(uint64_t));
     TIME_END(EXTERN_MEMCPY); 
-    TIME_START(EXTERN_COMPOSE);
+    TIME_START(EXTERN_COMPOSE); // ! the compose and decompose functions are also slow when rns_mod_cnt > 1
     rns_base->compose_array(data.data(), coeff_count, pool);
     TIME_END(EXTERN_COMPOSE);
 
@@ -192,6 +192,7 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 
+  // We get the first half directly from the query
   for (size_t i = 0; i < curr_l; i++) {
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
       output[i].push_back(query[i].data(0)[j]);
@@ -200,8 +201,9 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
       output[i].push_back(query[i].data(1)[j]);
     }
   }
-  gsw_ntt_negacyclic_harvey(output);
+  gsw_ntt_negacyclic_harvey(output);  // And the first half should be in NTT form
   output.resize(2 * curr_l);
+  // We use external product to get the second half
   for (size_t i = 0; i < curr_l; i++) {
     external_product(gsw_key, query[i], query[i]);
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
