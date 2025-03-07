@@ -2,6 +2,7 @@
 #include <cstring>
 #include <Eigen/Dense>
 #include <armadillo>
+#include "hexl/hexl.hpp"
 
 
 void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
@@ -238,6 +239,38 @@ void component_wise_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
 }
 
 
+void component_wise_mult_direct_mod(matrix_t *A, matrix_t *B, uint64_t *out, const uint64_t mod) {
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
+  const size_t p = B->cols; // p=2 (assumed)
+  const size_t levels = A->levels;
+  uint64_t *A_data = A->data;
+  uint64_t *B_data = B->data;
+
+  // create a temporary output array of size levels
+  uint64_t *tmp_out = new uint64_t[levels];
+
+  // Safety check (not strictly necessary, but wise):
+  if (p != 2) { return; }  
+  for (size_t i = 0; i < m; i++) {
+    for (size_t j = 0; j < n; j++) {
+      uint64_t *db_ptr = A_data + (i * n + j) * levels;
+      uint64_t *q0 = B_data + j * 2 * levels;
+      uint64_t *q1 = q0 + levels;
+      uint64_t *out_0 = out + i * 2 * levels;
+      uint64_t *out_1 = out_0 + levels;
+      intel::hexl::EltwiseMultMod(tmp_out, q0, db_ptr, levels, mod, 1);
+      intel::hexl::EltwiseAddMod(out_0, out_0, tmp_out, levels, mod);
+      
+      intel::hexl::EltwiseMultMod(tmp_out, q1, db_ptr, levels, mod, 1);
+      intel::hexl::EltwiseAddMod(out_1, out_1, tmp_out, levels, mod);
+    }
+  }
+
+  // free the temporary output array
+  delete[] tmp_out;
+}
+
 
 void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out) {
     const size_t rows = A->rows;   
@@ -291,14 +324,14 @@ void level_mat_mult_arma(matrix_t *A, matrix_t *B, matrix_t *out) {
     for (size_t level = 0; level < levels; ++level) {
         // Map raw data to Armadillo matrices
         arma::Mat<uint64_t> matA(A_data + level * (rows * cols), rows, cols,
-                                 true, true);
-        arma::Mat<uint64_t> matB(B_data + level * (cols * p), cols, p, true,
+                                 false, true);
+        arma::Mat<uint64_t> matB(B_data + level * (cols * p), cols, p, false,
                                  true);
         arma::Mat<uint64_t> matC(out_data + level * (rows * p), rows, p, false,
                                  true);
 
         // Perform matrix multiplication
-        matC = matA * matB;
+        matC = arma::Mat<uint64_t>(matA * matB);
     }
 }
 

@@ -251,8 +251,10 @@ std::vector<seal::Ciphertext> PirServer::expand_query(size_t client_id,
 
     for (size_t b = 0; b < expansion_const; b++) {
       Ciphertext cipher0 = cts[b];   // c_b in paper
+      TIME_START("Apply Galois");
       evaluator_.apply_galois_inplace(cipher0, DatabaseConstants::PolyDegree / expansion_const + 1,
                                       client_galois_key); // Subs(c_b, n/k + 1)
+      TIME_END("Apply Galois");
       Ciphertext temp;
       evaluator_.sub(cts[b], cipher0, temp);
       utils::shift_polynomial(params, temp,

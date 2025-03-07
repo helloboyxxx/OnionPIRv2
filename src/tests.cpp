@@ -10,6 +10,7 @@
 #include <iostream>
 #include <bitset>
 #include <Eigen/Dense>
+#include <Eigen/Core>
 
 #define EXPERIMENT_ITERATIONS 5
 
@@ -19,7 +20,7 @@ void run_tests() {
   // serialization_example();
   // test_external_product();
   // test_single_mat_mult();
-  test_fst_dim_mult();
+  // test_fst_dim_mult();
   // level_mat_mult_demo();
   // level_mat_mult128_demo();
   // component_wise_mult_demo();
@@ -508,6 +509,7 @@ void test_single_mat_mult() {
 
   // ============= Eigen mat mult ==============
   const std::string EIGEN_MULT = "Matrix multiplication Eigen";
+  Eigen::setNbThreads(1);  // Force Eigen to use only 1 thread
   Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> A_eigen(rows, cols);
   Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> B_eigen(cols, b_cols);
   Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> C_eigen(rows, b_cols);
@@ -562,6 +564,7 @@ void test_fst_dim_mult() {
   std::vector<uint64_t> A_data(m * n * k);
   std::vector<uint64_t> B_data(n * p * k);
   std::vector<uint64_t> C_data(m * p * k);
+  std::vector<uint128_t> C_data_128(m * p * k);
   // Fill A and B with random data
   fill_rand_arr(A_data.data(), m * n * k); 
   fill_rand_arr(B_data.data(), n * p * k);
@@ -569,7 +572,9 @@ void test_fst_dim_mult() {
   matrix_t A_mat { A_data.data(), m, n, k };
   matrix_t B_mat { B_data.data(), n, p, k };
   matrix_t C_mat { C_data.data(), m, p, k };
+  matrix128_t C_mat_128 { C_data_128.data(), m, p, k };
   size_t sum = 0;
+  uint128_t sum128 = 0;
 
   // ============= Old OnionPIR elementwise multiplication ==============
   const std::string ELEM_MULT = "elementwise multiplication";
@@ -582,6 +587,27 @@ void test_fst_dim_mult() {
   for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
   PRINT_BAR;
+
+
+  // ============= component wise mult 128 bits ==============
+  const std::string ELEM_MULT_128 = "Old elementwise multiplication 128 bits";
+  TIME_START(ELEM_MULT_128);
+  component_wise_mult_128(&A_mat, &B_mat, &C_mat_128);
+  TIME_END(ELEM_MULT_128);
+  sum128 = 0;
+  for (size_t i = 0; i < m * p * k; i++) { sum128 += C_data_128[i]; }
+  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
+  PRINT_BAR;
+
+  // ============= component wise mult direct mod using hexl ==============
+  const std::string ELEM_MULT_DIRECT_MOD = "elementwise multiplication direct mod";
+  std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
+  uint64_t mod_val = pir_params.get_coeff_modulus()[0].value();
+  TIME_START(ELEM_MULT_DIRECT_MOD);
+  component_wise_mult_direct_mod(&A_mat, &B_mat, C_data.data(), mod_val);
+  TIME_END(ELEM_MULT_DIRECT_MOD);
+  sum = 0;
+  for (size_t i = 0; i < m * p * k; i++) { sum += C_data[i]; }
 
 
   // ===================== Performing matrix multiplication by levels ===================== 
@@ -602,25 +628,14 @@ void test_fst_dim_mult() {
 
   // ============= level mat mult 128 bits ==============
   const std::string LV_MAT_MULT_128 = "Matrix multiplication 128 bits";
-  std::vector<uint128_t> C_data_128(m * p * k);
-  matrix128_t C_mat_128 { C_data_128.data(), m, p, k };
   TIME_START(LV_MAT_MULT_128);
   level_mat_mult_128(&A_mat, &B_mat, &C_mat_128);
   TIME_END(LV_MAT_MULT_128);
-  uint128_t sum128 = 0;
-  for (size_t i = 0; i < m * p * k; i++) { sum128 += C_data_128[i]; }
-  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
-  PRINT_BAR;
-
-  // ============= component wise mult 128 bits ==============
-  const std::string ELEM_MULT_128 = "Old elementwise multiplication 128 bits";
-  TIME_START(ELEM_MULT_128);
-  component_wise_mult_128(&A_mat, &B_mat, &C_mat_128);
-  TIME_END(ELEM_MULT_128);
   sum128 = 0;
   for (size_t i = 0; i < m * p * k; i++) { sum128 += C_data_128[i]; }
   BENCH_PRINT("Sum: " << uint128_to_string(sum128));
   PRINT_BAR;
+
 
   // ============= Level mat mult direct mod ==============
   const std::string LV_MAT_MULT_DIRECT_MOD = "Matrix multiplication direct mod";
@@ -632,6 +647,7 @@ void test_fst_dim_mult() {
 
   // ============= level mat mult using Eigen ==============
   const std::string EIGEN_MULT = "Matrix multiplication Eigen";
+  Eigen::setNbThreads(1);  // Force Eigen to use only 1 thread
   std::memset(C_data.data(), 0, C_data.size() * sizeof(uint64_t));
   TIME_START(EIGEN_MULT);
   level_mat_mult_eigen(&A_mat, &B_mat, &C_mat);
@@ -654,25 +670,28 @@ void test_fst_dim_mult() {
 
   // Let's calculate the throughput of the matrix multiplication, express in MB/s
   double old_elementwise_mult_time = GET_AVG_TIME(ELEM_MULT);
+  double elementwise_mult_128_time = GET_AVG_TIME(ELEM_MULT_128);
+  double elementwise_mult_direct_mod_time = GET_AVG_TIME(ELEM_MULT_DIRECT_MOD);
   double level_mat_mult_time = GET_AVG_TIME(LV_MAT_MULT);
   double level_mat_mult_128_time = GET_AVG_TIME(LV_MAT_MULT_128);
-  double elementwise_mult_128_time = GET_AVG_TIME(ELEM_MULT_128);
   double level_mat_mult_direct_mod_time = GET_AVG_TIME(LV_MAT_MULT_DIRECT_MOD);
   double level_mat_mult_eigen_time = GET_AVG_TIME(EIGEN_MULT);
   double level_mat_mult_arma_time = GET_AVG_TIME(ARMA_MULT);
 
   double old_elementwise_mult_throughput = db_size / (old_elementwise_mult_time * 1000); 
+  double elementwise_mult_128_throughput = db_size / (elementwise_mult_128_time * 1000);
+  double elementwise_mult_direct_mod_throughput = db_size / (elementwise_mult_direct_mod_time * 1000);
   double level_mat_mult_throughput = db_size / (level_mat_mult_time * 1000);
   double level_mat_mult_128_throughput = db_size / (level_mat_mult_128_time * 1000);
-  double elementwise_mult_128_throughput = db_size / (elementwise_mult_128_time * 1000);
   double level_mat_mult_direct_mod_throughput = db_size / (level_mat_mult_direct_mod_time * 1000);
   double level_mat_mult_eigen_throughput = db_size / (level_mat_mult_eigen_time * 1000);
   double level_mat_mult_arma_throughput = db_size / (level_mat_mult_arma_time * 1000);
 
-  BENCH_PRINT("elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
+  BENCH_PRINT("Elementwise mult throughput: " << (size_t)old_elementwise_mult_throughput << " MB/s");
+  BENCH_PRINT("Elementwise mult 128 throughput: " << (size_t)elementwise_mult_128_throughput << " MB/s");
+  BENCH_PRINT("Elementwise mult direct mod throughput: " << (size_t)elementwise_mult_direct_mod_throughput << " MB/s");
   BENCH_PRINT("Level mat mult throughput: " << (size_t) level_mat_mult_throughput << " MB/s");
   BENCH_PRINT("Level mat mult 128 throughput: " << (size_t)level_mat_mult_128_throughput << " MB/s");
-  BENCH_PRINT("Old elementwise mult 128 throughput: " << (size_t)elementwise_mult_128_throughput << " MB/s");
   BENCH_PRINT("Level mat mult direct mod throughput: " << (size_t)level_mat_mult_direct_mod_throughput << " MB/s");
   BENCH_PRINT("Level mat mult Eigen throughput: " << (size_t)level_mat_mult_eigen_throughput << " MB/s");
   BENCH_PRINT("Level mat mult Armadillo throughput: " << (size_t)level_mat_mult_arma_throughput << " MB/s");

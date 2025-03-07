@@ -6,12 +6,12 @@ if (NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Automatically enables all available optimizations for your local machine, including AVX2 and AVX512
-set(CMAKE_CXX_FLAGS "-O3 -g -std=c++17 -MD -march=native")
+set(CMAKE_CXX_FLAGS "-O3 -MD -march=native -mtune=native")  # Enable all optimizations
 
 
 # Add perf when building in Debug mode
 if (CMAKE_BUILD_TYPE MATCHES Debug)
-    set(CMAKE_CXX_FLAGS "-g -pg -O2")  # Enable profiling flags
+    set(CMAKE_CXX_FLAGS "-O2 -MD -pg -march=native -mtune=native")  # Enable profiling flags
 endif()
 
 option(NOAVX512 "Disable AVX-512" OFF)

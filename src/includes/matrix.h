@@ -32,6 +32,9 @@ void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out);
 
 void component_wise_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
 
+// This is using intel::hexl::EltwiseMultMod for each component wise multiplication.
+void component_wise_mult_direct_mod(matrix_t *A, matrix_t *B, uint64_t *out, const uint64_t mod);
+
 void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out);
 
 void level_mat_mult_arma(matrix_t *A, matrix_t *B, matrix_t *out);

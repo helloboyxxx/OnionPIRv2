@@ -39,6 +39,10 @@ public:
   inline seal::EncryptionParameters get_seal_params() const { return seal_params_; }
   inline seal::SEALContext get_context() const { return context_; }
   inline double get_DBSize_MB() const { return static_cast<double>(num_entries_) * entry_size_ / 1024 / 1024; }
+  inline double get_physical_storage_MB() const {
+    // After NTT, plaintext will have same size as ciphertext.
+    return static_cast<double>(get_coeff_val_cnt()) * num_pt_ * 8 / 1024 / 1024;
+  }
   inline size_t get_num_entries() const { return num_entries_; }
   inline size_t get_num_pt() const { return num_pt_; }
   inline size_t get_entry_size() const { return entry_size_; }
