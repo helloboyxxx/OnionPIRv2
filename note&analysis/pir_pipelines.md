@@ -18,7 +18,7 @@ Here I am listing the basic pipeline of the current OnionPIRv2. I will focus on 
 
 7. After the matrix-vector multiplication, we transform the resulting database to coefficient form. 
 
-8. For following dimensions, we run `evaluate_gsw_product`, where we do the $\mathsf{RGSW}(b) * (y - x) + x$ trick. The $*$ is `exteral_product`.
+8. For following dimensions, we run `other_dim_mux`, where we do the $\mathsf{RGSW}(b) * (y - x) + x$ trick. The $*$ is `exteral_product`.
 
    - Inside `external_product`, we first **decompose the $y-x$ BFV ciphertext** in coefficient form and **transform it to NTT form**. Then we perform the matrix-matrix multiplication between the decomposed BFV and the GSW selection vector.
 

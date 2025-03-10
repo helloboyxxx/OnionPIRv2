@@ -114,7 +114,8 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   matrix_t query_mat { query_data.data(), fst_dim_sz, 2, coeff_val_cnt };
   matrix128_t inter_res_mat { inter_res_.data(), other_dim_sz, 2, coeff_val_cnt };
   TIME_START(CORE_TIME);
-  level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
+  // level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
+  naive_level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
   TIME_END(CORE_TIME);
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
@@ -195,7 +196,7 @@ void PirServer::delay_modulus(std::vector<seal::Ciphertext> &result, const uint1
   }
 }
 
-void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
+void PirServer::other_dim_mux(std::vector<seal::Ciphertext> &result,
                                      GSWCiphertext &selection_cipher) {
 
   /**
@@ -212,14 +213,26 @@ void PirServer::evaluate_gsw_product(std::vector<seal::Ciphertext> &result,
   for (size_t i = 0; i < block_size; i++) {
     auto &x = result[i];
     auto &y = result[i + block_size];
-    evaluator_.sub_inplace(y, x);  // y - x
-    TIME_START(EXTERN_PROD_TOT_TIME);
-    data_gsw_.external_product(selection_cipher, y, y);  // b * (y - x)
-    TIME_END(EXTERN_PROD_TOT_TIME);
-    TIME_START(EXTERN_NTT_TIME);
+
+    // ========== y = y - x ==========
+    TIME_START(OTHER_DIM_ADD_SUB);
+    evaluator_.sub_inplace(y, x);
+    TIME_END(OTHER_DIM_ADD_SUB);
+
+    // ========== y = b * (y - x) ========== output will be in NTT form
+    TIME_START(OTHER_DIM_MUX_EXTERN);
+    data_gsw_.external_product(selection_cipher, y, y);
+    TIME_END(OTHER_DIM_MUX_EXTERN);
+
+    // ========== y = INTT(y) ==========, INTT stands for inverse NTT
+    TIME_START(OTHER_DIM_INTT);
     evaluator_.transform_from_ntt_inplace(y);
-    TIME_END(EXTERN_NTT_TIME);
+    TIME_END(OTHER_DIM_INTT);
+
+    // ========== result = y + x ==========
+    TIME_START(OTHER_DIM_ADD_SUB); 
     evaluator_.add_inplace(result[i], y);  // x + b * (y - x)
+    TIME_END(OTHER_DIM_ADD_SUB);
   }
   result.resize(block_size);
 }
@@ -251,10 +264,10 @@ std::vector<seal::Ciphertext> PirServer::expand_query(size_t client_id,
 
     for (size_t b = 0; b < expansion_const; b++) {
       Ciphertext cipher0 = cts[b];   // c_b in paper
-      TIME_START("Apply Galois");
+      TIME_START(APPLY_GALOIS);
       evaluator_.apply_galois_inplace(cipher0, DatabaseConstants::PolyDegree / expansion_const + 1,
                                       client_galois_key); // Subs(c_b, n/k + 1)
-      TIME_END("Apply Galois");
+      TIME_END(APPLY_GALOIS);
       Ciphertext temp;
       evaluator_.sub(cts[b], cipher0, temp);
       utils::shift_polynomial(params, temp,
@@ -345,17 +358,19 @@ std::vector<seal::Ciphertext> PirServer::make_query(const size_t client_id, std:
   TIME_START(OTHER_DIM_TIME);
   if (dims_.size() != 1) {
     for (size_t i = 1; i < dims_.size(); i++) {
-      evaluate_gsw_product(result, gsw_vec[i - 1]);
+      other_dim_mux(result, gsw_vec[i - 1]);
     }
   }
   TIME_END(OTHER_DIM_TIME);
 
   // ========================== Post-processing ==========================
+  TIME_START(MOD_SWITCH);
   // modulus switching so to reduce the response size by half
   if(pir_params_.get_seal_params().coeff_modulus().size() > 2) {
     DEBUG_PRINT("Modulus switching...");
     evaluator_.mod_switch_to_next_inplace(result[0]); // result.size() == 1.
   }
+  TIME_END(MOD_SWITCH);
 
   return result;
 }
@@ -438,8 +453,18 @@ void PirServer::preprocess_ntt() {
       evaluator_.transform_to_ntt_inplace(pt, context_.first_parms_id());
     }
   }
+
+  // print the the first 5 coefficients of the first plaintext in uint64_t
+  DEBUG_PRINT("After NTT, the coefficients look like:")
+  auto temp_pt = db_[0].value();
+  for (size_t i = 0; i < 5; i++) {
+    DEBUG_PRINT(std::bitset<64>(temp_pt.data()[i]));
+  }
 }
 
+// TODO: This is a temporary solution.
+// Optimally, we should align the database when generating the database.
+// This will save memory and time.
 void PirServer::realign_db() {
   BENCH_PRINT("Realigning the database...");
   // realign the database to the first dimension

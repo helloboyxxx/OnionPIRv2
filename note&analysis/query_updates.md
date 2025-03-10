@@ -6,7 +6,7 @@ The code was different from the pseudocode in OnionPIR paper. Yue made some chan
 
 ### Updates on `generate_query` on client side.
 
-- Previously, if the `query_indices[i] == 0`for dimension $i$, the code packed some "special values" to the coefficients of the query. Correspondingly, in `evaluate_gsw_product` on the server side, if the selection vector is RGSW(0), then it outputs the second half of the given vector. These old code are not consistent with the output of `get_query_indices`, and are againsts the conventional vector order. Hence, the first update is to change the code so that we indeed pack the value 1 when `query_indices[i] == 1`.
+- Previously, if the `query_indices[i] == 0`for dimension $i$, the code packed some "special values" to the coefficients of the query. Correspondingly, in `other_dim_mux` on the server side, if the selection vector is RGSW(0), then it outputs the second half of the given vector. These old code are not consistent with the output of `get_query_indices`, and are againsts the conventional vector order. Hence, the first update is to change the code so that we indeed pack the value 1 when `query_indices[i] == 1`.
 - TODO: also encrypt the first $l$ rows for RGSW queries. Worth it? The current `query_to_gsw` takes about 60ms for each dimension. 
   - Looks like this is impossible. Long story in short: it is impossible to put the complete secret key $s$ inside a coefficient..
 

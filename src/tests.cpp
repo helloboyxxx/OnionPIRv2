@@ -431,7 +431,7 @@ void test_external_product() {
     encryptor_->encrypt_symmetric(a, a_encrypted_vec[i]);
   }
   CLEAN_TIMER();
-  TIME_START(EXTERN_PROD_TOT_TIME);
+  TIME_START(OTHER_DIM_MUX_EXTERN);
   for (size_t i = 0; i < num_samples; i++) {
     data_gsw.external_product(b_gsw, a_encrypted_vec[i], a_encrypted_vec[i]);
 
@@ -439,7 +439,7 @@ void test_external_product() {
     evaluator_.transform_from_ntt_inplace(a_encrypted_vec[i]); // Try uncommenting this line and see the difference.
     TIME_END("inverse ntt");
   }
-  TIME_END(EXTERN_PROD_TOT_TIME);
+  TIME_END(OTHER_DIM_MUX_EXTERN);
 
   // print the timing result
   // roughly the result should be in the structure: 
@@ -472,13 +472,17 @@ void test_single_mat_mult() {
   constexpr size_t db_size = rows * cols * sizeof(uint64_t);  // we only care the big matrix
   BENCH_PRINT("Matrix size: " << db_size / 1024 / 1024 << " MB");
 
-  // ============= level mat mult ==============
-  const std::string LV_MAT_MULT = "Matrix multiplication";
-  // Allocate memory for A, B, out.
+  //Allocate memory for A, B, out.
   std::vector<uint64_t> A_data(rows * cols);
   std::vector<uint64_t> B_data(cols * b_cols);
   std::vector<uint64_t> C_data(rows * b_cols);
   std::vector<uint128_t> C_data128(rows * b_cols);
+
+  // uint64_t* A_data = allocate_aligned_uint64(rows * cols);
+  // uint64_t* B_data = allocate_aligned_uint64(cols * b_cols);
+  // uint64_t* C_data = allocate_aligned_uint64(rows * b_cols);
+  // uint128_t* C_data128 = allocate_aligned_uint128(rows * b_cols);
+
   // Fill A and B with random data
   fill_rand_arr(A_data.data(), rows * cols);
   fill_rand_arr(B_data.data(), cols * b_cols);
@@ -488,19 +492,45 @@ void test_single_mat_mult() {
   matrix_t C_mat { C_data.data(), rows, b_cols, 1 };
   matrix128_t C_mat128 { C_data128.data(), rows, b_cols, 1 };
 
+  // ============= level mat mult ==============
+  const std::string LV_MAT_MULT = "Matrix multiplication";
   TIME_START(LV_MAT_MULT);
   level_mat_mult(&A_mat, &B_mat, &C_mat);
   TIME_END(LV_MAT_MULT);
+
+  // ============= naive mat-vec mult ==============
+  const std::string NAIVE_MAT_MULT = "Naive matrix multiplication";
+  TIME_START(NAIVE_MAT_MULT);
+  naive_mat_mult(&A_mat, &B_mat, &C_mat);
+  TIME_END(NAIVE_MAT_MULT);
+
+  // ============= naive level mat mult ==============
+  const std::string NAIVE_LEVEL_MAT_MULT = "Naive level matrix multiplication";
+  TIME_START(NAIVE_LEVEL_MAT_MULT);
+  naive_level_mat_mult(&A_mat, &B_mat, &C_mat);
+  TIME_END(NAIVE_LEVEL_MAT_MULT);
   size_t sum = 0;
   for (size_t i = 0; i < rows * b_cols; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
   PRINT_BAR;
+
+  // ============= naive level mat mult 128 bits ==============
+  const std::string NAIVE_LEVEL_MAT_MULT_128 = "Naive level matrix multiplication 128 bits";
+  TIME_START(NAIVE_LEVEL_MAT_MULT_128);
+  naive_level_mat_mult_128(&A_mat, &B_mat, &C_mat128);
+  TIME_END(NAIVE_LEVEL_MAT_MULT_128);
 
   // ============= level mat mult 128 bits ==============
   const std::string LV_MAT_MULT_128 = "Matrix multiplication 128 bits";
   TIME_START(LV_MAT_MULT_128);
   level_mat_mult_128(&A_mat, &B_mat, &C_mat128);
   TIME_END(LV_MAT_MULT_128);
+
+  // ============= naive mat-vec mult 128 bits ==============
+  const std::string NAIVE_MAT_MULT_128 = "Naive matrix multiplication 128 bits";
+  TIME_START(NAIVE_MAT_MULT_128);
+  native_mat_mult_128(&A_mat, &B_mat, &C_mat128);
+  TIME_END(NAIVE_MAT_MULT_128);
   uint128_t sum128 = 0;
   for (size_t i = 0; i < rows * b_cols; i++) { sum128 += C_data128[i]; }
   BENCH_PRINT("Sum: " << uint128_to_string(sum128));
@@ -515,8 +545,8 @@ void test_single_mat_mult() {
   Eigen::Matrix<uint64_t, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> C_eigen(rows, b_cols);
 
   // Fill A and B with random data. The setRandom() function fills with values in the range [-1, 1].
-  A_eigen.setRandom();
-  B_eigen.setRandom();
+  // A_eigen.setRandom();
+  // B_eigen.setRandom();
   TIME_START(EIGEN_MULT);
   C_eigen.noalias() = A_eigen * B_eigen;
   TIME_END(EIGEN_MULT);
@@ -528,15 +558,27 @@ void test_single_mat_mult() {
   END_EXPERIMENT();
   PRINT_RESULTS();
   PRINT_BAR;
+  double naive_time = GET_AVG_TIME(NAIVE_MAT_MULT);
+  double naive_lvl_time = GET_AVG_TIME(NAIVE_LEVEL_MAT_MULT);
   double lv_time = GET_AVG_TIME(LV_MAT_MULT);
-  double eigen_time = GET_AVG_TIME(EIGEN_MULT);
+  double naive_time_128 = GET_AVG_TIME(NAIVE_MAT_MULT_128);
+  double naive_lvl_time_128 = GET_AVG_TIME(NAIVE_LEVEL_MAT_MULT_128);
   double lv_time_128 = GET_AVG_TIME(LV_MAT_MULT_128);
+  double eigen_time = GET_AVG_TIME(EIGEN_MULT);
+  double naive_throughput = db_size / (naive_time * 1000);
+  double naive_lvl_throughput = db_size / (naive_lvl_time * 1000);
   double lv_throughput = db_size / (lv_time * 1000);
-  double eigen_throughput = db_size / (eigen_time * 1000);
+  double naive_throughput_128 = db_size / (naive_time_128 * 1000);
+  double naive_lvl_throughput_128 = db_size / (naive_lvl_time_128 * 1000);
   double lv_throughput_128 = db_size / (lv_time_128 * 1000);
+  double eigen_throughput = db_size / (eigen_time * 1000);
+  BENCH_PRINT("Naive mat mult throughput: " << naive_throughput << " MB/s");
+  BENCH_PRINT("Naive level mat mult throughput: " << naive_lvl_throughput << " MB/s");
   BENCH_PRINT("Level mat mult throughput: " << lv_throughput << " MB/s");
-  BENCH_PRINT("Eigen mat mult throughput: " << eigen_throughput << " MB/s");
+  BENCH_PRINT("Naive mat mult 128 throughput: " << naive_throughput_128 << " MB/s");
+  BENCH_PRINT("Naive level mat mult 128 throughput: " << naive_lvl_throughput_128 << " MB/s");
   BENCH_PRINT("Level mat mult 128 throughput: " << lv_throughput_128 << " MB/s");
+  BENCH_PRINT("Eigen mat mult throughput: " << eigen_throughput << " MB/s");
 }
 
 

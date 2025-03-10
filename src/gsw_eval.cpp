@@ -110,29 +110,30 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
     TIME_END(EXTERN_COMPOSE);
 
     for (int p = l_ - 1; p >= 0; p--) {
-      std::vector<uint64_t> row = data;
+      std::vector<uint64_t> rshift_res(data);
       TIME_START(RIGHT_SHIFT_TIME);
       for (size_t k = 0; k < coeff_count; k++) {
-        auto ptr = row.data() + k * rns_mod_cnt;
+        // uint64_t* data_ptr = data.data() + k * rns_mod_cnt;
+        uint64_t* res_ptr = rshift_res.data() + k * rns_mod_cnt;
         // ! when we have rns_mod_cnt > 1, this function is slow. Please compare to the single mod version.
-        seal::util::right_shift_uint(ptr, p * base_log2_, rns_mod_cnt, ptr); // shift right by p * base_log2
-        ptr[0] &= mask;
+        seal::util::right_shift_uint(res_ptr, p * base_log2_, rns_mod_cnt, res_ptr); // shift right by p * base_log2
+        res_ptr[0] &= mask;
         for (size_t i = 1; i < rns_mod_cnt; i++) {
-          ptr[i] = 0;
+          res_ptr[i] = 0;
         }
       }
       TIME_END(RIGHT_SHIFT_TIME);
       TIME_START(EXTERN_DECOMP);
-      rns_base->decompose_array(row.data(), coeff_count, pool);
+      rns_base->decompose_array(rshift_res.data(), coeff_count, pool);
       TIME_END(EXTERN_DECOMP);
 
       TIME_START(EXTERN_NTT_TIME);
-      // transform to NTT form
+      // transform result to NTT form
       for (size_t i = 0; i < rns_mod_cnt; i++) {
-        seal::util::ntt_negacyclic_harvey(row.data() + coeff_count * i, ntt_tables[i]);
+        seal::util::ntt_negacyclic_harvey(rshift_res.data() + coeff_count * i, ntt_tables[i]);
       }
       TIME_END(EXTERN_NTT_TIME);
-      output.emplace_back(std::move(row));
+      output.emplace_back(std::move(rshift_res));
     }
   }
 }
@@ -145,42 +146,43 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
   // Get parameters
   const uint64_t base = uint64_t(1) << base_log2_;
   const uint64_t mask = base - 1;
-
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const auto &context = pir_params_.get_context();
   const auto &context_data = context.first_context_data();
   const auto ntt_tables = context_data->small_ntt_tables();
-
   seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
   auto pool = seal::MemoryManager::GetPool();
-
   std::vector<uint64_t> data(coeff_count);
 
+  // we do right shift on both polynomials
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     const uint64_t *poly_ptr = ct.data(poly_id);
-    TIME_START("memcpy and compose");
-    memcpy(data.data(), poly_ptr, coeff_count * sizeof(uint64_t));
+    memcpy(data.data(), poly_ptr, coeff_count * sizeof(uint64_t));  // this copy is fast
+    TIME_START(EXTERN_COMPOSE);
     rns_base->compose_array(data.data(), coeff_count, pool);
-    TIME_END("memcpy and compose");
+    TIME_END(EXTERN_COMPOSE);
 
+    // right shift different amount to match the GSW ciphertext
     for (int p = l_ - 1; p >= 0; p--) {
-      std::vector<uint64_t> row = data;
+      std::vector<uint64_t> rshift_res(coeff_count);
       const size_t shift_amount = p * base_log2_;
       TIME_START(RIGHT_SHIFT_TIME);
+      #pragma GCC unroll 32
       for (size_t k = 0; k < coeff_count; k++) {
-        row[k] = (row[k] >> shift_amount) & mask;
+        // right shift every coefficient. This is why we need coefficient form.
+        rshift_res[k] = (data[k] >> shift_amount) & mask;
       }
       TIME_END(RIGHT_SHIFT_TIME);
 
-      TIME_START("decompose");
-      rns_base->decompose_array(row.data(), coeff_count, pool);
-      TIME_END("decompose");
+      TIME_START(EXTERN_DECOMP);
+      rns_base->decompose_array(rshift_res.data(), coeff_count, pool);
+      TIME_END(EXTERN_DECOMP);
 
       // transform to NTT form
       TIME_START(EXTERN_NTT_TIME);
-      seal::util::ntt_negacyclic_harvey(row.data(), ntt_tables[0]);
+      seal::util::ntt_negacyclic_harvey(rshift_res.data(), ntt_tables[0]);
       TIME_END(EXTERN_NTT_TIME);
-      output.emplace_back(std::move(row));
+      output.emplace_back(std::move(rshift_res)); // this is also fast
     }
   }
 }
@@ -205,7 +207,9 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
   output.resize(2 * curr_l);
   // We use external product to get the second half
   for (size_t i = 0; i < curr_l; i++) {
+    TIME_START(CONVERT_EXTERN);
     external_product(gsw_key, query[i], query[i]);
+    TIME_END(CONVERT_EXTERN);
     for (size_t j = 0; j < coeff_count * rns_mod_cnt; j++) {
       output[i + curr_l].push_back(query[i].data(0)[j]);
     }

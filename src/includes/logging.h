@@ -26,28 +26,35 @@
 #define FST_DIM_TIME "First dim"
 #define OTHER_DIM_TIME "Other dim"
 #define EXPAND_TIME "Expand"
+#define APPLY_GALOIS "Apply Galois"
 #define CONVERT_TIME "Convert"
+#define CONVERT_EXTERN "Convert external product"
 #define SERVER_TOT_TIME "Server total"
 #define CLIENT_TOT_TIME "Client total"
-#define EXTERN_PROD_TOT_TIME "External product total"
+#define OTHER_DIM_ADD_SUB "Other dim add/sub"
+#define OTHER_DIM_MUX_EXTERN "External product in other dim"
 #define DECOMP_RLWE_TIME "Decomp RLWE (including conversion)"
 #define EXTERN_PROD_MAT_MULT_TIME "External product mat mult (including conversion)"
 #define FST_NTT_TIME "First dim NTT"
 #define EXTERN_NTT_TIME "External NTT"
+#define OTHER_DIM_INTT "Other dim INTT"
 #define EXTERN_MEMCPY "external memcpy"
 #define EXTERN_COMPOSE "external compose"
 #define EXTERN_DECOMP "external decompose"
+#define MOD_SWITCH "Modulus switching"
 
 #define RIGHT_SHIFT_TIME "Right shift"
 #define FST_DELEY_MOD_TIME "First dim delay mod"
 
-
 // Hierarchical structure for pretty result
+// Map structure: Parent -> Children
 const std::unordered_map<std::string, std::vector<std::string>> LOG_HIERARCHY = {
-    {SERVER_TOT_TIME, {EXPAND_TIME, CONVERT_TIME, FST_DIM_TIME, OTHER_DIM_TIME}},
+    {SERVER_TOT_TIME, {EXPAND_TIME, CONVERT_TIME, FST_DIM_TIME, OTHER_DIM_TIME, MOD_SWITCH}},
+    {EXPAND_TIME, {APPLY_GALOIS}},
+    {CONVERT_TIME, {CONVERT_EXTERN}},
     {FST_DIM_TIME, {CORE_TIME, FST_DELEY_MOD_TIME, FST_NTT_TIME}},
-    {OTHER_DIM_TIME, {EXTERN_PROD_TOT_TIME}},
-    {EXTERN_PROD_TOT_TIME, {DECOMP_RLWE_TIME, EXTERN_PROD_MAT_MULT_TIME}},
+    {OTHER_DIM_TIME, {OTHER_DIM_MUX_EXTERN, OTHER_DIM_INTT, OTHER_DIM_ADD_SUB}},
+    {OTHER_DIM_MUX_EXTERN, {DECOMP_RLWE_TIME, EXTERN_PROD_MAT_MULT_TIME}},
     {DECOMP_RLWE_TIME, {EXTERN_COMPOSE, EXTERN_NTT_TIME, RIGHT_SHIFT_TIME, EXTERN_DECOMP}}
 };
 

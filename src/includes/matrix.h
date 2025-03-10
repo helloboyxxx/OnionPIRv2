@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#define ALIGN_BYTES 64  // Typical cache line size
+
 // define a structure for a matrix
 typedef struct {
     uint64_t *data;
@@ -19,11 +21,24 @@ typedef struct {
     size_t levels;
 } matrix128_t; 
 
+
+
+uint64_t* allocate_aligned_uint64(size_t num_elements);
+uint128_t* allocate_aligned_uint128(size_t num_elements);
+
+void naive_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
+
+void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
+
 // performing coeff_val_cnt many matrix matrix multiplications. Assumes that the B matrix has only two columns.
 void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
 
 // suitable for the first dimension. The output is in uint128_t.
 void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+
+void native_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+
+void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
 
 void level_mat_mult_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const seal::Modulus mod);
 

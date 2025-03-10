@@ -5,6 +5,76 @@
 #include "hexl/hexl.hpp"
 
 
+
+void naive_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
+  // We do a naive matrix vector multiplication.
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
+  const uint64_t *A_ptr = A->data;
+  const uint64_t *B_ptr = B->data;
+  uint64_t *out_ptr = out->data; 
+  size_t a_idx = 0;
+  for (size_t i = 0; i < m; i++) {
+    #pragma unroll
+    for (size_t k = 0; k < n; k++) {
+      // out_ptr[i] += A_ptr[i * n + k] * B_ptr[k];
+      out_ptr[i] += A_ptr[a_idx++] * B_ptr[k];
+    }
+  }
+}
+
+void native_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
+  // We do a naive matrix vector multiplication.
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
+  const uint64_t *A_ptr = A->data;
+  const uint64_t *B_ptr = B->data;
+  uint128_t *out_ptr = out->data; 
+  size_t a_idx = 0;
+  for (size_t i = 0; i < m; i++) {
+    #pragma GCC unroll 32
+    for (size_t k = 0; k < n; k++) {
+      out_ptr[i] += (uint128_t)A_ptr[a_idx++] * B_ptr[k];
+    }
+  }
+}
+
+void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
+  const size_t levels = A->levels;
+  const uint64_t *A_data = A->data;
+  const uint64_t *B_data = B->data;
+  uint64_t *out_data = out->data;
+
+  // For each "level," we do one standard mat-mat multiplication.
+  // A(level) is m-by-n, B(level) is n-by-2, out(level) is m-by-2
+  for (size_t level = 0; level < levels; ++level) {
+    // Offsets into the flat arrays for this level
+    const uint64_t *A_ptr = A_data + level * (m * n);
+    const uint64_t *B_ptr = B_data + level * (n * 2);
+    uint64_t *C_ptr = out_data + level * (m * 2);
+    // Then we can compute a normal matrix multiplication
+    // for (size_t i = 0; i < m; i++) {
+    //   for (size_t j = 0; j < 2; j++) {
+    //     #pragma GCC unroll 128
+    //     for (size_t k = 0; k < n; k++) {
+    //       C_ptr[i * 2 + j] += A_ptr[i * n + k] * B_ptr[k * 2 + j];
+    //     }
+    //   }
+    // }
+    for (size_t i = 0; i < m; i++) {
+      #pragma GCC unroll 64
+      for (size_t k = 0; k < n; k++) {
+        for (size_t j = 0; j < 2; j++) {
+          C_ptr[i * 2] += A_ptr[i * n + k] * B_ptr[k * 2];
+          C_ptr[i * 2 + 1] += A_ptr[i * n + k] * B_ptr[k * 2 + 1];
+       }
+      }
+    }
+  }
+}
+
 void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   const size_t rows = A->rows; 
   const size_t cols = A->cols;
@@ -71,6 +141,32 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   } // end for(level)
 }
 
+void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
+  const size_t levels = A->levels;
+  const uint64_t *A_data = A->data;
+  const uint64_t *B_data = B->data;
+  uint128_t *out_data = out->data;
+
+  // For each "level," we do one standard mat-mat multiplication.
+  // A(level) is m-by-n, B(level) is n-by-2, out(level) is m-by-2
+  for (size_t level = 0; level < levels; ++level) {
+    // Offsets into the flat arrays for this level
+    const uint64_t *A_ptr = A_data + level * (m * n);
+    const uint64_t *B_ptr = B_data + level * (n * 2);
+    uint128_t *C_ptr = out_data + level * (m * 2);
+    // Then we can compute a normal matrix multiplication
+    for (size_t i = 0; i < m; i++) {
+      for (size_t j = 0; j < 2; j++) {
+        #pragma GCC unroll 32
+        for (size_t k = 0; k < n; k++) {
+          C_ptr[i * 2 + j] += (uint128_t)A_ptr[i * n + k] * B_ptr[k * 2 + j];
+        }
+      }
+    }
+  }
+}
 
 void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   // Using restrict qualifiers to tell the compiler there is no aliasing.
