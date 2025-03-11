@@ -43,6 +43,8 @@ class GSWEval {
     */
     void decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
 
+    // Similar to decomp_rlwe. Use this when rn_mod_cnt = 2. This is my attempt to optimize the right shift.
+    void decomp_rlwe_two_mods(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
 
     // Similar to decomp_rlwe. Use this when rn_mod_cnt = 1. It uses faster right shift.
     void decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);

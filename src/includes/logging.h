@@ -38,7 +38,6 @@
 #define FST_NTT_TIME "First dim NTT"
 #define EXTERN_NTT_TIME "External NTT"
 #define OTHER_DIM_INTT "Other dim INTT"
-#define EXTERN_MEMCPY "external memcpy"
 #define EXTERN_COMPOSE "external compose"
 #define EXTERN_DECOMP "external decompose"
 #define MOD_SWITCH "Modulus switching"

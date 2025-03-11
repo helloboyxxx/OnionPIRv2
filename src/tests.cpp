@@ -24,6 +24,7 @@ void run_tests() {
   // level_mat_mult_demo();
   // level_mat_mult128_demo();
   // component_wise_mult_demo();
+  // quick_prints();
 }
 
 
@@ -102,9 +103,9 @@ void test_pir() {
     END_EXPERIMENT();
     // ============= PRINTING RESULTS ===============    
     DEBUG_PRINT("\t\tWanted/result/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
-    // #ifdef _DEBUG
+    #ifdef _DEBUG
     PRINT_RESULTS(i+1);
-    // #endif
+    #endif
 
     if (entry_is_equal(result_entry, actual_entry)) {
       // print a green success message
@@ -998,4 +999,34 @@ void component_wise_mult_demo() {
     }
   }
   std::cout << std::endl;
+}
+
+
+void quick_prints() {
+  print_func_name(__FUNCTION__);
+  PirParams pir_params;
+  auto context_data = pir_params.get_context().first_context_data();
+  auto mods = pir_params.get_coeff_modulus();
+  seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
+  auto inv_arr_ptr = rns_base->inv_punctured_prod_mod_base_array();
+  auto base_ptr = rns_base->base();
+  auto punctured_prod_array = rns_base->punctured_prod_array();
+  // print the initial mods and the inv_array values
+  BENCH_PRINT("Initial mods: ");
+  for (auto mod : mods) {
+    BENCH_PRINT(mod.value());
+  }
+  BENCH_PRINT("Inv array: ");
+  for (size_t i = 0; i < mods.size(); i++) {
+    BENCH_PRINT("operand: \t" << inv_arr_ptr[i].operand);
+    BENCH_PRINT("quotient: \t" << inv_arr_ptr[i].quotient);
+  }
+  BENCH_PRINT("Base array: ");
+  for (size_t i = 0; i < mods.size(); i++) {
+    BENCH_PRINT("base: \t" << base_ptr[i].value());
+  }
+  BENCH_PRINT("Punctured prod array: ");
+  for (size_t i = 0; i < mods.size(); i++) {
+    BENCH_PRINT("punctured prod: \t" << punctured_prod_array[i]);
+  }
 }

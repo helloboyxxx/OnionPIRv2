@@ -14,6 +14,7 @@ void serialization_example();
 
 // Other tests
 void test_prime_gen();
+void quick_prints();
 
 // matrix tests
 void test_single_mat_mult();

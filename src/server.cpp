@@ -8,6 +8,9 @@
 #include <stdexcept>
 #include <fstream>
 
+#ifdef _DEBUG
+#include <bitset>
+#endif
 
 // copy the pir_params and set evaluator equal to the context_. 
 // client_galois_keys_, client_gsw_keys_, and db_ are not set yet.

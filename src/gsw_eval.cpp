@@ -95,31 +95,39 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
   const auto &context = pir_params_.get_context();
   const auto context_data = context.first_context_data();
+  constexpr size_t bits_per_uint64_sz = 64;
   auto ntt_tables = context_data->small_ntt_tables();
   seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
   auto pool = seal::MemoryManager::GetPool();
+  std::vector<uint64_t> ct_coeffs(coeff_count * rns_mod_cnt);
 
-  std::vector<uint64_t> data(coeff_count * rns_mod_cnt);
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
-    const uint64_t *poly_ptr = ct.data(poly_id);
-    TIME_START(EXTERN_MEMCPY);
-    memcpy(data.data(), poly_ptr, coeff_count * rns_mod_cnt * sizeof(uint64_t));
-    TIME_END(EXTERN_MEMCPY); 
-    TIME_START(EXTERN_COMPOSE); // ! the compose and decompose functions are also slow when rns_mod_cnt > 1
-    rns_base->compose_array(data.data(), coeff_count, pool);
+    // we need a copy because we need to compose the array. This copy is very fast. 
+    memcpy(ct_coeffs.data(), ct.data(poly_id), coeff_count * rns_mod_cnt * sizeof(uint64_t));
+    TIME_START(EXTERN_COMPOSE); 
+    // the "compose_array" transform the coefficients from RNS form to multi-precision integer form. The lower bits are in the front. 
+    // ! the compose and decompose functions are slow when rns_mod_cnt > 1 because mod and div operations are slow.
+    rns_base->compose_array(ct_coeffs.data(), coeff_count, pool);
     TIME_END(EXTERN_COMPOSE);
 
+    // we right shift certain amount to match the GSW ciphertext
     for (int p = l_ - 1; p >= 0; p--) {
-      std::vector<uint64_t> rshift_res(data);
+      std::vector<uint64_t> rshift_res(ct_coeffs);
+      const size_t shift_amount = p * base_log2_;
       TIME_START(RIGHT_SHIFT_TIME);
       for (size_t k = 0; k < coeff_count; k++) {
-        // uint64_t* data_ptr = data.data() + k * rns_mod_cnt;
         uint64_t* res_ptr = rshift_res.data() + k * rns_mod_cnt;
-        // ! when we have rns_mod_cnt > 1, this function is slow. Please compare to the single mod version.
-        seal::util::right_shift_uint(res_ptr, p * base_log2_, rns_mod_cnt, res_ptr); // shift right by p * base_log2
-        res_ptr[0] &= mask;
-        for (size_t i = 1; i < rns_mod_cnt; i++) {
-          res_ptr[i] = 0;
+        if (rns_mod_cnt == 2) {
+            seal::util::right_shift_uint128(res_ptr, p * base_log2_, res_ptr);
+            res_ptr[0] &= mask;
+            res_ptr[1] &= 0;
+        } else {
+          // ! when we have rns_mod_cnt > 2, this function is slow. Please compare to the single mod version.
+          seal::util::right_shift_uint(res_ptr, p * base_log2_, rns_mod_cnt, res_ptr);// shift right by p * base_log2
+          res_ptr[0] &= mask; // mask the first coefficient
+          for (size_t i = 1; i < rns_mod_cnt; i++) {
+            res_ptr[i] = 0; // set the rest to 0
+          }
         }
       }
       TIME_END(RIGHT_SHIFT_TIME);
@@ -139,7 +147,6 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
 }
 
 void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output) {
-
   assert(output.size() == 0);
   output.reserve(2 * l_);
 
@@ -152,31 +159,22 @@ void GSWEval::decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std
   const auto ntt_tables = context_data->small_ntt_tables();
   seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
   auto pool = seal::MemoryManager::GetPool();
-  std::vector<uint64_t> data(coeff_count);
 
   // we do right shift on both polynomials
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     const uint64_t *poly_ptr = ct.data(poly_id);
-    memcpy(data.data(), poly_ptr, coeff_count * sizeof(uint64_t));  // this copy is fast
-    TIME_START(EXTERN_COMPOSE);
-    rns_base->compose_array(data.data(), coeff_count, pool);
-    TIME_END(EXTERN_COMPOSE);
-
     // right shift different amount to match the GSW ciphertext
     for (int p = l_ - 1; p >= 0; p--) {
-      std::vector<uint64_t> rshift_res(coeff_count);
+      std::vector<uint64_t> rshift_res(poly_ptr, poly_ptr + coeff_count);
       const size_t shift_amount = p * base_log2_;
+      
       TIME_START(RIGHT_SHIFT_TIME);
       #pragma GCC unroll 32
       for (size_t k = 0; k < coeff_count; k++) {
         // right shift every coefficient. This is why we need coefficient form.
-        rshift_res[k] = (data[k] >> shift_amount) & mask;
+        rshift_res[k] = (rshift_res[k] >> shift_amount) & mask;
       }
       TIME_END(RIGHT_SHIFT_TIME);
-
-      TIME_START(EXTERN_DECOMP);
-      rns_base->decompose_array(rshift_res.data(), coeff_count, pool);
-      TIME_END(EXTERN_DECOMP);
 
       // transform to NTT form
       TIME_START(EXTERN_NTT_TIME);
