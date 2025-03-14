@@ -120,9 +120,10 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
         if (rns_mod_cnt == 2) {
             seal::util::right_shift_uint128(res_ptr, p * base_log2_, res_ptr);
             res_ptr[0] &= mask;
-            res_ptr[1] &= 0;
+            res_ptr[1] = 0;
         } else {
           // ! when we have rns_mod_cnt > 2, this function is slow. Please compare to the single mod version.
+          // If in the future we want rns_mod_cnt == 3, we can use the right_shift_uint192 function.
           seal::util::right_shift_uint(res_ptr, p * base_log2_, rns_mod_cnt, res_ptr);// shift right by p * base_log2
           res_ptr[0] &= mask; // mask the first coefficient
           for (size_t i = 1; i < rns_mod_cnt; i++) {

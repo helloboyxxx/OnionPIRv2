@@ -15,11 +15,11 @@
 #define EXPERIMENT_ITERATIONS 5
 
 void run_tests() {
-  test_pir();
+  // test_pir();
   // bfv_example();
   // serialization_example();
   // test_external_product();
-  // test_single_mat_mult();
+  test_single_mat_mult();
   // test_fst_dim_mult();
   // level_mat_mult_demo();
   // level_mat_mult128_demo();
@@ -479,11 +479,6 @@ void test_single_mat_mult() {
   std::vector<uint64_t> C_data(rows * b_cols);
   std::vector<uint128_t> C_data128(rows * b_cols);
 
-  // uint64_t* A_data = allocate_aligned_uint64(rows * cols);
-  // uint64_t* B_data = allocate_aligned_uint64(cols * b_cols);
-  // uint64_t* C_data = allocate_aligned_uint64(rows * b_cols);
-  // uint128_t* C_data128 = allocate_aligned_uint128(rows * b_cols);
-
   // Fill A and B with random data
   fill_rand_arr(A_data.data(), rows * cols);
   fill_rand_arr(B_data.data(), cols * b_cols);
@@ -521,6 +516,12 @@ void test_single_mat_mult() {
   naive_level_mat_mult_128(&A_mat, &B_mat, &C_mat128);
   TIME_END(NAIVE_LEVEL_MAT_MULT_128);
 
+  // ============= avx mat mat mult 128 bits ==============
+  const std::string AVX_MAT_MULT_128 = "AVX matrix multiplication 128 bits";
+  TIME_START(AVX_MAT_MULT_128);
+  avx_mat_mat_mult_128(A_data.data(), B_data.data(), C_data128.data(), rows, cols);
+  TIME_END(AVX_MAT_MULT_128);
+
   // ============= level mat mult 128 bits ==============
   const std::string LV_MAT_MULT_128 = "Matrix multiplication 128 bits";
   TIME_START(LV_MAT_MULT_128);
@@ -530,7 +531,7 @@ void test_single_mat_mult() {
   // ============= naive mat-vec mult 128 bits ==============
   const std::string NAIVE_MAT_MULT_128 = "Naive matrix multiplication 128 bits";
   TIME_START(NAIVE_MAT_MULT_128);
-  native_mat_mult_128(&A_mat, &B_mat, &C_mat128);
+  naive_mat_mult_128(&A_mat, &B_mat, &C_mat128);
   TIME_END(NAIVE_MAT_MULT_128);
   uint128_t sum128 = 0;
   for (size_t i = 0; i < rows * b_cols; i++) { sum128 += C_data128[i]; }
@@ -564,6 +565,7 @@ void test_single_mat_mult() {
   double lv_time = GET_AVG_TIME(LV_MAT_MULT);
   double naive_time_128 = GET_AVG_TIME(NAIVE_MAT_MULT_128);
   double naive_lvl_time_128 = GET_AVG_TIME(NAIVE_LEVEL_MAT_MULT_128);
+  double avx_time_128 = GET_AVG_TIME(AVX_MAT_MULT_128);
   double lv_time_128 = GET_AVG_TIME(LV_MAT_MULT_128);
   double eigen_time = GET_AVG_TIME(EIGEN_MULT);
   double naive_throughput = db_size / (naive_time * 1000);
@@ -571,6 +573,7 @@ void test_single_mat_mult() {
   double lv_throughput = db_size / (lv_time * 1000);
   double naive_throughput_128 = db_size / (naive_time_128 * 1000);
   double naive_lvl_throughput_128 = db_size / (naive_lvl_time_128 * 1000);
+  double avx_throughput_128 = db_size / (avx_time_128 * 1000);
   double lv_throughput_128 = db_size / (lv_time_128 * 1000);
   double eigen_throughput = db_size / (eigen_time * 1000);
   BENCH_PRINT("Naive mat mult throughput: " << naive_throughput << " MB/s");
@@ -578,6 +581,7 @@ void test_single_mat_mult() {
   BENCH_PRINT("Level mat mult throughput: " << lv_throughput << " MB/s");
   BENCH_PRINT("Naive mat mult 128 throughput: " << naive_throughput_128 << " MB/s");
   BENCH_PRINT("Naive level mat mult 128 throughput: " << naive_lvl_throughput_128 << " MB/s");
+  BENCH_PRINT("AVX mat mult 128 throughput: " << avx_throughput_128 << " MB/s");
   BENCH_PRINT("Level mat mult 128 throughput: " << lv_throughput_128 << " MB/s");
   BENCH_PRINT("Eigen mat mult throughput: " << eigen_throughput << " MB/s");
 }

@@ -23,19 +23,21 @@ void naive_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   }
 }
 
-void native_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
+void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   // We do a naive matrix vector multiplication.
   const size_t m = A->rows; 
   const size_t n = A->cols; 
   const uint64_t *A_ptr = A->data;
   const uint64_t *B_ptr = B->data;
   uint128_t *out_ptr = out->data; 
-  size_t a_idx = 0;
+  uint64_t temp;
   for (size_t i = 0; i < m; i++) {
+    temp = 0;
     #pragma GCC unroll 32
     for (size_t k = 0; k < n; k++) {
-      out_ptr[i] += (uint128_t)A_ptr[a_idx++] * B_ptr[k];
+      temp += (uint128_t)A_ptr[i * n + k] * B_ptr[k];
     }
+    out_ptr[i] = temp;
   }
 }
 
@@ -54,23 +56,17 @@ void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
     const uint64_t *A_ptr = A_data + level * (m * n);
     const uint64_t *B_ptr = B_data + level * (n * 2);
     uint64_t *C_ptr = out_data + level * (m * 2);
+    uint64_t tmp0, tmp1;
     // Then we can compute a normal matrix multiplication
-    // for (size_t i = 0; i < m; i++) {
-    //   for (size_t j = 0; j < 2; j++) {
-    //     #pragma GCC unroll 128
-    //     for (size_t k = 0; k < n; k++) {
-    //       C_ptr[i * 2 + j] += A_ptr[i * n + k] * B_ptr[k * 2 + j];
-    //     }
-    //   }
-    // }
     for (size_t i = 0; i < m; i++) {
-      #pragma GCC unroll 64
+      tmp0 = 0; tmp1 = 0;
+      #pragma GCC unroll 32
       for (size_t k = 0; k < n; k++) {
-        for (size_t j = 0; j < 2; j++) {
-          C_ptr[i * 2] += A_ptr[i * n + k] * B_ptr[k * 2];
-          C_ptr[i * 2 + 1] += A_ptr[i * n + k] * B_ptr[k * 2 + 1];
-       }
+        tmp0 += A_ptr[i * n + k] * B_ptr[k * 2];
+        tmp1 += A_ptr[i * n + k] * B_ptr[k * 2 + 1];
       }
+      C_ptr[i * 2] = tmp0;
+      C_ptr[i * 2 + 1] = tmp1;
     }
   }
 }
@@ -141,6 +137,48 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   } // end for(level)
 }
 
+void avx_mat_mat_mult_128(const uint64_t *__restrict A,
+                          const uint64_t *__restrict B,
+                          uint128_t *__restrict out, const size_t rows,
+                          const size_t cols) {
+    // Ensure that cols is a multiple of 8.
+    
+    for (size_t i = 0; i < rows; i++) {
+        uint128_t acc0 = 0;  // Accumulator for first output column.
+        uint128_t acc1 = 0;  // Accumulator for second output column.
+        
+        for (size_t k = 0; k < cols; k += 8) {
+            // Load 8 consecutive 64-bit elements from row i of A.
+            const uint64_t* a_ptr = A + i * cols + k;
+            __m512i vecA = _mm512_loadu_si512((const __m512i*)a_ptr);
+            
+            // For B, assume first 'cols' elements form column 0 and the next 'cols' form column 1.
+            // Load 8 elements for column 0.
+            const uint64_t* b0_ptr = B + k;
+            __m512i vecB0 = _mm512_loadu_si512((const __m512i*)b0_ptr);
+            // Load 8 elements for column 1.
+            const uint64_t* b1_ptr = B + cols + k;
+            __m512i vecB1 = _mm512_loadu_si512((const __m512i*)b1_ptr);
+            
+            // Compute element-wise 128-bit products for the two columns.
+            __m512i lo0, hi0, lo1, hi1;
+            mul_64x64_128(vecA, vecB0, &lo0, &hi0);
+            mul_64x64_128(vecA, vecB1, &lo1, &hi1);
+            
+            // Horizontally reduce the 8 lane products to a scalar 128-bit sum.
+            uint128_t block_sum0 = horizontal_reduce_128(lo0, hi0);
+            uint128_t block_sum1 = horizontal_reduce_128(lo1, hi1);
+            
+            acc0 += block_sum0;
+            acc1 += block_sum1;
+        }
+        // Store the two 128-bit dot products for row i.
+        out[i*2]     = acc0;
+        out[i*2 + 1] = acc1;
+    }
+}
+
+
 void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   const size_t m = A->rows; 
   const size_t n = A->cols; 
@@ -156,14 +194,17 @@ void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
     const uint64_t *A_ptr = A_data + level * (m * n);
     const uint64_t *B_ptr = B_data + level * (n * 2);
     uint128_t *C_ptr = out_data + level * (m * 2);
+    uint128_t tmp0, tmp1;
     // Then we can compute a normal matrix multiplication
     for (size_t i = 0; i < m; i++) {
-      for (size_t j = 0; j < 2; j++) {
-        #pragma GCC unroll 32
-        for (size_t k = 0; k < n; k++) {
-          C_ptr[i * 2 + j] += (uint128_t)A_ptr[i * n + k] * B_ptr[k * 2 + j];
-        }
+      tmp0 = 0; tmp1 = 0;
+      #pragma GCC unroll 32
+      for (size_t k = 0; k < n; k++) {
+        tmp0 += (uint128_t)A_ptr[i * n + k] * B_ptr[k * 2];
+        tmp1 += (uint128_t)A_ptr[i * n + k] * B_ptr[k * 2 + 1];
       }
+      C_ptr[i * 2] = tmp0;
+      C_ptr[i * 2 + 1] = tmp1;
     }
   }
 }
