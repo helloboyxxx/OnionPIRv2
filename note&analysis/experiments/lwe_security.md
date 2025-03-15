@@ -1,7 +1,7 @@
 ```python
 params = LWE.Parameters (
     n=2048,
-    q=1152921504606683137, # 60, 60
+    q=1152921504606683137, # 60
     Xs=ND.UniformMod(3),
     Xe=ND.DiscreteGaussian(stddev=3.19), tag="ONION_2048",
 )

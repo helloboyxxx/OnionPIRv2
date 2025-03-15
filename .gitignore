@@ -24,3 +24,4 @@ output.txt
 error.txt
 run_onion_pir.sbatch
 outputs/
+.vscode/
