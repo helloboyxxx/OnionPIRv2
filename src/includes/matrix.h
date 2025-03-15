@@ -5,8 +5,6 @@
 #include <stddef.h>
 #include <immintrin.h>
 
-#define ALIGN_BYTES 64  // Typical cache line size
-
 // define a structure for a matrix
 typedef struct {
     uint64_t *data;
@@ -22,39 +20,67 @@ typedef struct {
     size_t levels;
 } matrix128_t; 
 
-void naive_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
 
-void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
+// ! mat_vec functions means matrix-vector multiplication. 
+// It is used for testing the performance of each method. Otherwise,
+// we are doing out = A * B, where A = m * n, B = n * 2, n = DatabaseConstants::MaxFstDimSz
 
+// ======================== NAIVE STUFF ========================
+void naive_mat_vec(matrix_t *A, matrix_t *B, matrix_t *out);
+void naive_mat_vec_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+void naive_level_mat_mat(matrix_t *A, matrix_t *B, matrix_t *out);
+void naive_level_mat_mat_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+
+// ======================== LEVEL MAT MAT ========================
 // performing coeff_val_cnt many matrix matrix multiplications. Assumes that the B matrix has only two columns.
-void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
+void level_mat_mat(matrix_t *A, matrix_t *B, matrix_t *out);
 
 // suitable for the first dimension. The output is in uint128_t.
-void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+void level_mat_mat_128(matrix_t *A, matrix_t *B, matrix128_t *out);
 
-void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
-
+// A single matrix * matrix multiplication, assuming second matrix has only two
+// columns. This is a helper for level_mat_mult_128.
 void mat_mat_128(const uint64_t *__restrict A, const uint64_t *__restrict B,
                  uint128_t *__restrict out, const size_t rows,
                  const size_t cols);
 
-void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+// calculate mod after each multiplication. Hence, output will be in uint64_t.
+void level_mat_mat_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const seal::Modulus mod);
 
-void level_mat_mult_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const seal::Modulus mod);
+
+// ======================== COMPONENT WISE MULTIPLICATION ========================
+
+// These are examples of component wise multiplication. This demonstrates the
+// first dimension multiplication of OnionPIRv1.
+// In v1, we think of the database as a matrix of polynomials, where each NTT
+// polynomial is stored in a vector. Then, the first dimension is doing a
+// matrix-matrix multiplication where each element is a vector, and the
+// multiplication is defined by component wise multiplication of the vectors.
+// Hence, multiplying one "row" of database and one "column" of query is
+// equivalent as doing 2*N*degree many component wise multiplications, where N
+// is the first dimension size, say 256.
+// ? The question is: will the entire query vector of vectors stay in the cache
+// when we scan the second "row" of the database?
+// Short answer: No. Bad locality.
 
 // Perform the Matrix Multiplication over a direct product over component wise vector multiplication.
 void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out);
-
 void component_wise_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
-
 // This is using intel::hexl::EltwiseMultMod for each component wise multiplication.
 void component_wise_mult_direct_mod(matrix_t *A, matrix_t *B, uint64_t *out, const uint64_t mod);
 
+// ======================== THIRD PARTIES ========================
+// Currently, I don't know any libraries that can do 64x64->128 multiplication.
+// Here we use 64*64->64 multiplications as the easier alternative.
+// If you want a cleaner code, maybe you can write a genearal level_mat_mult
+// wrapper, then pass the function pointer to the actual implementation.
+// I am being lazy here...
+
+#ifdef HAVE_EIGEN
 void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out);
+#endif
 
-void level_mat_mult_arma(matrix_t *A, matrix_t *B, matrix_t *out);
-
-
+// ======================== HELPER FUNCTIONS ========================
 // calculates c = c + a * b mod m using Barrett reduction
 inline void mult_add_mod(uint64_t &a, uint64_t &b, uint64_t &c, const seal::Modulus &m) {
     uint128_t tmp = (uint128_t)a * b + c;
@@ -64,8 +90,8 @@ inline void mult_add_mod(uint64_t &a, uint64_t &b, uint64_t &c, const seal::Modu
 
 
 // ======================== CRAZY AVX STUFF ========================
-
-
+// ! I asked gpt to generate these AVX codes. I have no idea what they do.
+// ! I only observed that they are very slow, slower than the naive implementation.
 //------------------------------------------------------------------------------
 // Helper: Multiply two 64-bit unsigned integers (each lane of a __m512i)
 // to produce a full 128-bit product represented as two 64-bit parts (low and high).
@@ -110,7 +136,6 @@ static inline void mul_64x64_128(__m512i a, __m512i b, __m512i* lo, __m512i* hi)
     *hi = higher;
 }
 
-
 //------------------------------------------------------------------------------
 // Horizontal reduction: given two __m512i vectors representing the low and high parts of
 // eight 128-bit values, reduce them to a single uint128_t sum.
@@ -126,7 +151,6 @@ static inline uint128_t horizontal_reduce_128(__m512i lo, __m512i hi) {
     }
     return sum;
 }
-
 
 //------------------------------------------------------------------------------
 // Function: avx_mat_mat_mult_128

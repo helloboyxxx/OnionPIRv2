@@ -44,9 +44,17 @@ add_executable(Onion-PIR ${SRC_FILES})
 find_package(SEAL 4.1 REQUIRED)
 target_link_libraries(Onion-PIR PUBLIC SEAL::seal)
 
-# Find and link Eigen library
-find_package(Eigen3 3.3 REQUIRED NO_MODULE)
-target_link_libraries(Onion-PIR PUBLIC Eigen3::Eigen)
+# Attempt to find Eigen3 quietly
+find_package(Eigen3 3.3 QUIET)
+
+if(Eigen3_FOUND)
+    message(STATUS "Eigen3 found. Enabling Eigen-specific functionality.")
+    target_link_libraries(Onion-PIR PUBLIC Eigen3::Eigen)
+    target_compile_definitions(Onion-PIR PUBLIC HAVE_EIGEN)
+else()
+    message(WARNING "Eigen3 not found. Skipping Eigen-specific code.")
+    target_compile_definitions(Onion-PIR PUBLIC SKIP_EIGEN)
+endif()
 
 # Include directories
 target_include_directories(Onion-PIR PUBLIC src/includes)

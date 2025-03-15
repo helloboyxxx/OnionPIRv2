@@ -1,29 +1,30 @@
 #include "matrix.h"
 #include <cstring>
 #include <Eigen/Dense>
-#include <armadillo>
 #include "hexl/hexl.hpp"
 
 
 
-void naive_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
+// ======================== NAIVE STUFF ========================
+void naive_mat_vec(matrix_t *A, matrix_t *B, matrix_t *out) {
   // We do a naive matrix vector multiplication.
   const size_t m = A->rows; 
   const size_t n = A->cols; 
   const uint64_t *A_ptr = A->data;
   const uint64_t *B_ptr = B->data;
   uint64_t *out_ptr = out->data; 
-  size_t a_idx = 0;
+  uint64_t temp;
   for (size_t i = 0; i < m; i++) {
-    #pragma unroll
+    #pragma GCC unroll 128
     for (size_t k = 0; k < n; k++) {
-      // out_ptr[i] += A_ptr[i * n + k] * B_ptr[k];
-      out_ptr[i] += A_ptr[a_idx++] * B_ptr[k];
+      temp += A_ptr[i * n + k] * B_ptr[k];
     }
+    out_ptr[i] = temp;
   }
 }
 
-void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
+
+void naive_mat_vec_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   // We do a naive matrix vector multiplication.
   const size_t m = A->rows; 
   const size_t n = A->cols; 
@@ -41,24 +42,8 @@ void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   }
 }
 
-void mat_mat_128(const uint64_t *__restrict A, const uint64_t *__restrict B,
-                 uint128_t *__restrict out, const size_t rows,
-                 const size_t cols) {
-  if (cols % 32 != 0) { return; }
-  uint128_t t0, t1;
-  for (size_t i = 0; i < rows; i++) {
-    t0 = 0; t1 = 0;
-    #pragma GCC unroll 32
-    for (size_t k = 0; k < cols; k++) {
-      t0 += A[i * cols + k] * (uint128_t)B[2 * k];
-      t1 += A[i * cols + k] * (uint128_t)B[2 * k + 1];
-    }
-    out[2 * i] = t0;
-    out[2 * i + 1] = t1;
-  }
-}
 
-void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
+void naive_level_mat_mat(matrix_t *A, matrix_t *B, matrix_t *out) {
   const size_t m = A->rows; 
   const size_t n = A->cols; 
   const size_t levels = A->levels;
@@ -77,7 +62,7 @@ void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
     // Then we can compute a normal matrix multiplication
     for (size_t i = 0; i < m; i++) {
       tmp0 = 0; tmp1 = 0;
-      #pragma GCC unroll 32
+      #pragma GCC unroll 64
       for (size_t k = 0; k < n; k++) {
         tmp0 += A_ptr[i * n + k] * B_ptr[k * 2];
         tmp1 += A_ptr[i * n + k] * B_ptr[k * 2 + 1];
@@ -88,7 +73,31 @@ void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   }
 }
 
-void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
+
+void naive_level_mat_mat_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
+  const size_t m = A->rows; 
+  const size_t n = A->cols; 
+  const size_t levels = A->levels;
+  const uint64_t *A_data = A->data;
+  const uint64_t *B_data = B->data;
+  uint128_t *out_data = out->data;
+
+  // For each "level," we do one standard mat-mat multiplication.
+  // A(level) is m-by-n, B(level) is n-by-2, out(level) is m-by-2
+  for (size_t level = 0; level < levels; ++level) {
+    // Offsets into the flat arrays for this level
+    const uint64_t *A_ptr = A_data + level * (m * n);
+    const uint64_t *B_ptr = B_data + level * (n * 2);
+    uint128_t *C_ptr = out_data + level * (m * 2);
+    // TODO: optimize this function.
+    mat_mat_128(A_ptr, B_ptr, C_ptr, m, n);
+  }
+}
+
+
+// ======================== LEVEL MAT MAT ========================
+
+void level_mat_mat(matrix_t *A, matrix_t *B, matrix_t *out) {
   const size_t rows = A->rows; 
   const size_t cols = A->cols;
   const size_t levels = A->levels;
@@ -154,68 +163,8 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   } // end for(level)
 }
 
-void avx_mat_mat_mult_128(const uint64_t *__restrict A,
-                          const uint64_t *__restrict B,
-                          uint128_t *__restrict out, const size_t rows,
-                          const size_t cols) {
-    // Ensure that cols is a multiple of 8.
-    
-    for (size_t i = 0; i < rows; i++) {
-        uint128_t acc0 = 0;  // Accumulator for first output column.
-        uint128_t acc1 = 0;  // Accumulator for second output column.
-        
-        for (size_t k = 0; k < cols; k += 8) {
-            // Load 8 consecutive 64-bit elements from row i of A.
-            const uint64_t* a_ptr = A + i * cols + k;
-            __m512i vecA = _mm512_loadu_si512((const __m512i*)a_ptr);
-            
-            // For B, assume first 'cols' elements form column 0 and the next 'cols' form column 1.
-            // Load 8 elements for column 0.
-            const uint64_t* b0_ptr = B + k;
-            __m512i vecB0 = _mm512_loadu_si512((const __m512i*)b0_ptr);
-            // Load 8 elements for column 1.
-            const uint64_t* b1_ptr = B + cols + k;
-            __m512i vecB1 = _mm512_loadu_si512((const __m512i*)b1_ptr);
-            
-            // Compute element-wise 128-bit products for the two columns.
-            __m512i lo0, hi0, lo1, hi1;
-            mul_64x64_128(vecA, vecB0, &lo0, &hi0);
-            mul_64x64_128(vecA, vecB1, &lo1, &hi1);
-            
-            // Horizontally reduce the 8 lane products to a scalar 128-bit sum.
-            uint128_t block_sum0 = horizontal_reduce_128(lo0, hi0);
-            uint128_t block_sum1 = horizontal_reduce_128(lo1, hi1);
-            
-            acc0 += block_sum0;
-            acc1 += block_sum1;
-        }
-        // Store the two 128-bit dot products for row i.
-        out[i*2]     = acc0;
-        out[i*2 + 1] = acc1;
-    }
-}
 
-
-void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
-  const size_t m = A->rows; 
-  const size_t n = A->cols; 
-  const size_t levels = A->levels;
-  const uint64_t *A_data = A->data;
-  const uint64_t *B_data = B->data;
-  uint128_t *out_data = out->data;
-
-  // For each "level," we do one standard mat-mat multiplication.
-  // A(level) is m-by-n, B(level) is n-by-2, out(level) is m-by-2
-  for (size_t level = 0; level < levels; ++level) {
-    // Offsets into the flat arrays for this level
-    const uint64_t *A_ptr = A_data + level * (m * n);
-    const uint64_t *B_ptr = B_data + level * (n * 2);
-    uint128_t *C_ptr = out_data + level * (m * 2);
-    mat_mat_128(A_ptr, B_ptr, C_ptr, m, n);
-  }
-}
-
-void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
+void level_mat_mat_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   // Using restrict qualifiers to tell the compiler there is no aliasing.
   const size_t rows   = A->rows;
   const size_t cols   = A->cols;
@@ -265,7 +214,25 @@ void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   }
 }
 
-void level_mat_mult_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const seal::Modulus mod) {
+
+void mat_mat_128(const uint64_t *__restrict A, const uint64_t *__restrict B,
+                 uint128_t *__restrict out, const size_t rows,
+                 const size_t cols) {
+  uint128_t t0, t1;
+  for (size_t i = 0; i < rows; i++) {
+    t0 = 0; t1 = 0;
+    #pragma GCC unroll 32
+    for (size_t k = 0; k < cols; k++) {
+      t0 += A[i * cols + k] * (uint128_t)B[2 * k];
+      t1 += A[i * cols + k] * (uint128_t)B[2 * k + 1];
+    }
+    out[2 * i] = t0;
+    out[2 * i + 1] = t1;
+  }
+}
+
+
+void level_mat_mat_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const seal::Modulus mod) {
   const size_t rows = A->rows;
   const size_t cols = A->cols;
   const size_t levels = A->levels;
@@ -327,7 +294,7 @@ void level_mat_mult_direct_mod(matrix_t *A, matrix_t *B, matrix_t *out, const se
   } // end for(level)
 }
 
-
+// ======================== COMPONENT WISE MULTIPLICATION ========================
 
 void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
   const size_t m = A->rows; 
@@ -354,6 +321,7 @@ void component_wise_mult(matrix_t *A, matrix_t *B, matrix_t *out) {
     }
   }
 }
+
 
 void component_wise_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   const size_t m = A->rows; 
@@ -415,6 +383,8 @@ void component_wise_mult_direct_mod(matrix_t *A, matrix_t *B, uint64_t *out, con
 }
 
 
+// ======================== THIRD PARTIES ========================
+
 void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out) {
     const size_t rows = A->rows;   
     const size_t cols = A->cols;   
@@ -447,34 +417,45 @@ void level_mat_mult_eigen(matrix_t *A, matrix_t *B, matrix_t *out) {
 }
 
 
-void level_mat_mult_arma(matrix_t *A, matrix_t *B, matrix_t *out) {
-    const size_t rows = A->rows;   
-    const size_t cols = A->cols;   
-    const size_t p = B->cols;      // p=2 (assumed)
-    const size_t levels = A->levels;
-    uint64_t* A_data = A->data;
-    uint64_t* B_data = B->data;
-    uint64_t* out_data = out->data;
+// ======================== CRAZY AVX STUFF ========================
 
-    // We always assume p=2. Because the BFV ciphertext has two polynomials.
-    // This assumption keeps the code simple.
-    if (p != 2) {
-        return;
-    }
-
-    // For each "level," perform one standard matrix-matrix multiplication.
-    // A(level) is rows-by-cols, B(level) is cols-by-2, out(level) is rows-by-2
-    for (size_t level = 0; level < levels; ++level) {
-        // Map raw data to Armadillo matrices
-        arma::Mat<uint64_t> matA(A_data + level * (rows * cols), rows, cols,
-                                 false, true);
-        arma::Mat<uint64_t> matB(B_data + level * (cols * p), cols, p, false,
-                                 true);
-        arma::Mat<uint64_t> matC(out_data + level * (rows * p), rows, p, false,
-                                 true);
-
-        // Perform matrix multiplication
-        matC = arma::Mat<uint64_t>(matA * matB);
+void avx_mat_mat_mult_128(const uint64_t *__restrict A,
+                          const uint64_t *__restrict B,
+                          uint128_t *__restrict out, const size_t rows,
+                          const size_t cols) {
+    // Ensure that cols is a multiple of 8.
+    
+    for (size_t i = 0; i < rows; i++) {
+        uint128_t acc0 = 0;  // Accumulator for first output column.
+        uint128_t acc1 = 0;  // Accumulator for second output column.
+        
+        for (size_t k = 0; k < cols; k += 8) {
+            // Load 8 consecutive 64-bit elements from row i of A.
+            const uint64_t* a_ptr = A + i * cols + k;
+            __m512i vecA = _mm512_loadu_si512((const __m512i*)a_ptr);
+            
+            // For B, assume first 'cols' elements form column 0 and the next 'cols' form column 1.
+            // Load 8 elements for column 0.
+            const uint64_t* b0_ptr = B + k;
+            __m512i vecB0 = _mm512_loadu_si512((const __m512i*)b0_ptr);
+            // Load 8 elements for column 1.
+            const uint64_t* b1_ptr = B + cols + k;
+            __m512i vecB1 = _mm512_loadu_si512((const __m512i*)b1_ptr);
+            
+            // Compute element-wise 128-bit products for the two columns.
+            __m512i lo0, hi0, lo1, hi1;
+            mul_64x64_128(vecA, vecB0, &lo0, &hi0);
+            mul_64x64_128(vecA, vecB1, &lo1, &hi1);
+            
+            // Horizontally reduce the 8 lane products to a scalar 128-bit sum.
+            uint128_t block_sum0 = horizontal_reduce_128(lo0, hi0);
+            uint128_t block_sum1 = horizontal_reduce_128(lo1, hi1);
+            
+            acc0 += block_sum0;
+            acc1 += block_sum1;
+        }
+        // Store the two 128-bit dot products for row i.
+        out[i*2]     = acc0;
+        out[i*2 + 1] = acc1;
     }
 }
-

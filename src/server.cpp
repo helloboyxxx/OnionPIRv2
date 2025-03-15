@@ -104,13 +104,9 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   TIME_END("Query data preparation");
 
   /*
-  I imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
-  vector. The goal is to calculate DB * fst_dim_query, but each multiplication
-  is a vector-vector elementwise multiplication.
-  TODO: I believe this can be optimized. Currently, the throughput is same as
-  the vec-vec elementwise multiplication because we are not doing tiling now.
-  However, ideally, the first dimension is equivalent to coeff_val_cnt many
-  mat-vec multiplications.
+  Imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
+  vector of size coeff_val_cnt. In OnionPIRv1, the first dimension is doing the 
+  component wise matrix multiplication. Further details can be found in the "matrix.h" file.
   */
   // prepare the matrices
   matrix_t db_mat { db_aligned_.get(), other_dim_sz, fst_dim_sz, coeff_val_cnt };
@@ -118,7 +114,8 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   matrix128_t inter_res_mat { inter_res_.data(), other_dim_sz, 2, coeff_val_cnt };
   TIME_START(CORE_TIME);
   // level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
-  naive_level_mat_mult_128(&db_mat, &query_mat, &inter_res_mat);
+  // TODO: optimize the mat_mat_128 inside this function.
+  naive_level_mat_mat_128(&db_mat, &query_mat, &inter_res_mat);
   TIME_END(CORE_TIME);
 
   // ========== transform the intermediate to coefficient form. Delay the modulus operation ==========
