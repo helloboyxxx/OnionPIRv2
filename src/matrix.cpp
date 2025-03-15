@@ -30,7 +30,7 @@ void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
   const uint64_t *A_ptr = A->data;
   const uint64_t *B_ptr = B->data;
   uint128_t *out_ptr = out->data; 
-  uint64_t temp;
+  uint128_t temp;
   for (size_t i = 0; i < m; i++) {
     temp = 0;
     #pragma GCC unroll 32
@@ -38,6 +38,23 @@ void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
       temp += (uint128_t)A_ptr[i * n + k] * B_ptr[k];
     }
     out_ptr[i] = temp;
+  }
+}
+
+void mat_mat_128(const uint64_t *__restrict A, const uint64_t *__restrict B,
+                 uint128_t *__restrict out, const size_t rows,
+                 const size_t cols) {
+  if (cols % 32 != 0) { return; }
+  uint128_t t0, t1;
+  for (size_t i = 0; i < rows; i++) {
+    t0 = 0; t1 = 0;
+    #pragma GCC unroll 32
+    for (size_t k = 0; k < cols; k++) {
+      t0 += A[i * cols + k] * (uint128_t)B[2 * k];
+      t1 += A[i * cols + k] * (uint128_t)B[2 * k + 1];
+    }
+    out[2 * i] = t0;
+    out[2 * i + 1] = t1;
   }
 }
 
@@ -194,18 +211,7 @@ void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out) {
     const uint64_t *A_ptr = A_data + level * (m * n);
     const uint64_t *B_ptr = B_data + level * (n * 2);
     uint128_t *C_ptr = out_data + level * (m * 2);
-    uint128_t tmp0, tmp1;
-    // Then we can compute a normal matrix multiplication
-    for (size_t i = 0; i < m; i++) {
-      tmp0 = 0; tmp1 = 0;
-      #pragma GCC unroll 32
-      for (size_t k = 0; k < n; k++) {
-        tmp0 += (uint128_t)A_ptr[i * n + k] * B_ptr[k * 2];
-        tmp1 += (uint128_t)A_ptr[i * n + k] * B_ptr[k * 2 + 1];
-      }
-      C_ptr[i * 2] = tmp0;
-      C_ptr[i * 2 + 1] = tmp1;
-    }
+    mat_mat_128(A_ptr, B_ptr, C_ptr, m, n);
   }
 }
 

@@ -22,11 +22,6 @@ typedef struct {
     size_t levels;
 } matrix128_t; 
 
-
-
-uint64_t* allocate_aligned_uint64(size_t num_elements);
-uint128_t* allocate_aligned_uint128(size_t num_elements);
-
 void naive_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
 
 void naive_level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
@@ -38,6 +33,10 @@ void level_mat_mult(matrix_t *A, matrix_t *B, matrix_t *out);
 void level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
 
 void naive_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
+
+void mat_mat_128(const uint64_t *__restrict A, const uint64_t *__restrict B,
+                 uint128_t *__restrict out, const size_t rows,
+                 const size_t cols);
 
 void naive_level_mat_mult_128(matrix_t *A, matrix_t *B, matrix128_t *out);
 
