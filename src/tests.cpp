@@ -9,8 +9,11 @@
 #include <cassert>
 #include <iostream>
 #include <bitset>
+
+#ifdef HAVE_EIGEN
 #include <Eigen/Dense>
 #include <Eigen/Core>
+#endif
 
 #define EXPERIMENT_ITERATIONS 5
 

@@ -1,7 +1,9 @@
 #include "matrix.h"
 #include <cstring>
-#include <Eigen/Dense>
 #include "hexl/hexl.hpp"
+#ifdef HAVE_EIGEN
+#include <Eigen/Dense>
+#endif
 
 
 
