@@ -15,14 +15,14 @@
 #include <Eigen/Core>
 #endif
 
-#define EXPERIMENT_ITERATIONS 5
+#define EXPERIMENT_ITERATIONS 8
 
 void run_tests() {
   test_pir();
   // bfv_example();
   // serialization_example();
   // test_external_product();
-  test_single_mat_mult();
+  // test_single_mat_mult();
   // test_fst_dim_mult();
 }
 
@@ -78,14 +78,14 @@ void test_pir() {
     
     // ============= SERVER ===============
     TIME_START(SERVER_TOT_TIME);
-    auto result = server.make_query(client_id, data_stream);
+    std::vector<seal::Ciphertext> result = server.make_query(client_id, data_stream);
     TIME_END(SERVER_TOT_TIME);
 
     // ============= CLIENT ===============
     TIME_START(CLIENT_TOT_TIME);
     // client gets result from the server and decrypts it
-    auto decrypted_result = client.decrypt_result(result);
-    Entry result_entry = client.get_entry_from_plaintext(entry_index, decrypted_result[0]);
+    std::vector<seal::Plaintext> decrypted_result = client.decrypt_result(result);
+    Entry response_entry = client.get_entry_from_plaintext(entry_index, decrypted_result[0]);
     TIME_END(CLIENT_TOT_TIME);
 
     // write the result to the stream to test the size
@@ -97,16 +97,16 @@ void test_pir() {
     Entry actual_entry = server.direct_get_entry(entry_index);
     // extract and print the actual entry index
     uint64_t actual_entry_idx = get_entry_idx(actual_entry);
-    uint64_t result_entry_idx = get_entry_idx(result_entry);
+    uint64_t resp_entry_idx = get_entry_idx(response_entry);
     
     END_EXPERIMENT();
     // ============= PRINTING RESULTS ===============    
-    DEBUG_PRINT("\t\tWanted/result/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
+    DEBUG_PRINT("\t\tWanted/resp/actual idx:\t" << entry_index << " / " << result_entry_idx << " / " << actual_entry_idx);
     #ifdef _DEBUG
     PRINT_RESULTS(i+1);
     #endif
 
-    if (entry_is_equal(result_entry, actual_entry)) {
+    if (entry_is_equal(response_entry, actual_entry)) {
       // print a green success message
       std::cout << "\033[1;32mSuccess!\033[0m" << std::endl;
       success_count++;
@@ -114,7 +114,7 @@ void test_pir() {
       // print a red failure message
       std::cout << "\033[1;31mFailure!\033[0m" << std::endl;
       std::cout << "PIR Result:\t";
-      print_entry(result_entry);
+      print_entry(response_entry);
       std::cout << "Actual Entry:\t";
       print_entry(actual_entry);
     }
@@ -123,7 +123,6 @@ void test_pir() {
 
   double avg_server_time = GET_AVG_TIME(SERVER_TOT_TIME);
   double throughput = pir_params.get_DBSize_MB() / (avg_server_time / 1000);
-  
 
   // ============= PRINTING FINAL RESULTS ===============]
   BENCH_PRINT("                                FINAL RESULTS")
@@ -135,9 +134,8 @@ void test_pir() {
   BENCH_PRINT("query size: " << query_size << " bytes");
   BENCH_PRINT("response size: " << response_size << " bytes");
   
-  // PRINT_AVERAGE_RESULTS();
   PRETTY_PRINT();
-  BENCH_PRINT("Throughput: " << throughput << " MB/s");
+  BENCH_PRINT("Server throughput: " << throughput << " MB/s");
 }
 
   // This is an example of how to use the BFV scheme in SEAL and in our PIR scheme.

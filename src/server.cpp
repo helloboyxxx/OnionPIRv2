@@ -24,7 +24,7 @@ PirServer::PirServer(const PirParams &pir_params)
   // allocate enough space for the database, init with std::nullopt
   db_ = std::make_unique<std::optional<seal::Plaintext>[]>(num_pt_);
   // after NTT, each database polynomial coefficient will be in mod q. Hence,
-  // they will be represented by rns_mod_cnt many uint64_t, same as the ciphertext. 
+  // each pt coefficient will be represented by rns_mod_cnt many uint64_t, same as the ciphertext. 
   db_aligned_ = std::make_unique<uint64_t[]>(num_pt_ * pir_params_.get_coeff_val_cnt());
   fill_inter_res();
 }
@@ -82,13 +82,13 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   const size_t coeff_val_cnt = pir_params_.get_coeff_val_cnt(); // polydegree * RNS moduli count
   const size_t one_ct_sz = 2 * coeff_val_cnt; // Ciphertext has two polynomials
 
+  // fill the intermediate result with zeros
+  std::fill(inter_res_.begin(), inter_res_.end(), 0);
+
   // transform the selection vector to ntt form
   for (size_t i = 0; i < fst_dim_query.size(); i++) {
     evaluator_.transform_to_ntt_inplace(fst_dim_query[i]);
   }
-
-  // fill the intermediate result with zeros
-  std::fill(inter_res_.begin(), inter_res_.end(), 0);
 
   // reallocate the query data to a continuous memory 
   TIME_START("Query data preparation");
@@ -197,7 +197,7 @@ void PirServer::delay_modulus(std::vector<seal::Ciphertext> &result, const uint1
 }
 
 void PirServer::other_dim_mux(std::vector<seal::Ciphertext> &result,
-                                     GSWCiphertext &selection_cipher) {
+                              GSWCiphertext &selection_cipher) {
 
   /**
    * Note that we only have a single GSWCiphertext for this selection.
@@ -333,16 +333,15 @@ std::vector<seal::Ciphertext> PirServer::make_query(const size_t client_id, std:
 
   // Reconstruct RGSW queries
   TIME_START(CONVERT_TIME);
-  std::vector<GSWCiphertext> gsw_vec; // GSW ciphertexts
+  std::vector<GSWCiphertext> gsw_vec(dims_.size() - 1); // GSW ciphertexts
   if (dims_.size() != 1) {  // if we do need futher dimensions
-    gsw_vec.resize(dims_.size() - 1);
     for (size_t i = 1; i < dims_.size(); i++) {
       std::vector<seal::Ciphertext> lwe_vector; // BFV ciphertext, size l * 2. This vector will be reconstructed as a single RGSW ciphertext.
       for (size_t k = 0; k < DatabaseConstants::GSW_L; k++) {
         auto ptr = dims_[0] + (i - 1) * DatabaseConstants::GSW_L + k;
         lwe_vector.push_back(query_vector[ptr]);
       }
-      // Converting the BFV ciphertext to GSW ciphertext
+      // Converting the BFV ciphertexts to GSW ciphertext by doing external product
       key_gsw_.query_to_gsw(lwe_vector, client_gsw_keys_[client_id], gsw_vec[i - 1]);
     }
   }

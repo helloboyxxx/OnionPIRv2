@@ -59,26 +59,23 @@ private:
   GSWEval key_gsw_;
   GSWEval data_gsw_;
 
-  /*!
-    Expands the first query ciphertext into a selection vector of ciphertexts
-    where the ith ciphertext encodes the ith bit of the first query ciphertext.
-  */
+  // Expands the query BFV ciphertext into a vector of BFV ciphertexts,
+  // where the first DatabaseConstants::MaxFstDim many ciphertexts is the first dimension query,
+  // and the rest will be used to reconstruct the RGSW ciphertexts for the other dimensions.
   std::vector<seal::Ciphertext> expand_query(size_t client_id, seal::Ciphertext &ciphertext) const;
-  /*!
-    Performs a cross product between the first selection vector and the
-    database.
-  */
+  
+  // high level: homomorphic matrix vector multiplication between plaintext database and query ciphertext
+  // input selection_vector should stay in coefficient form.
+  // output will be in coefficient form.
   std::vector<seal::Ciphertext> evaluate_first_dim(std::vector<seal::Ciphertext> &selection_vector);
 
   // This is a helper for evaluate the first dimension. 
   // Instead of doing a mod operation after every addition and multiplication during the matrix multiplication,
   // we delay the mod operation until the end. We also use barret reduction for the mod operation.
   void delay_modulus(std::vector<seal::Ciphertext> &result, const uint128_t *__restrict inter_res);
-
-  /*!
-    Transforms the plaintexts in the database into their NTT representation.
-    This speeds up computation but takes up more memory.
-  */
+  
+  // Transforms the plaintexts in the database into their NTT representation.
+  // This speeds up computation but takes up more memory.  
   void preprocess_ntt();
   // Realign the database so that the first dimension calculation is in a contiguous memory.
   void realign_db();

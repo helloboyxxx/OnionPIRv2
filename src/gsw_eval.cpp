@@ -203,6 +203,8 @@ void GSWEval::query_to_gsw(std::vector<seal::Ciphertext> query, GSWCiphertext gs
     }
   }
   gsw_ntt_negacyclic_harvey(output);  // And the first half should be in NTT form
+  
+  // The second half is computed using external product.
   output.resize(2 * curr_l);
   // We use external product to get the second half
   for (size_t i = 0; i < curr_l; i++) {
