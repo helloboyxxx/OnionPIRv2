@@ -462,22 +462,28 @@ void PirServer::preprocess_ntt() {
   }
 }
 
-// TODO: This is a temporary solution.
-// Optimally, we should align the database when generating the database.
-// This will save memory and time.
+
 void PirServer::realign_db() {
   BENCH_PRINT("Realigning the database...");
+  // Since we are breaking each coefficient of the same plaintext into different
+  // levels, I believe this realignment is unavoidable since the ntt
+  // preprocessing requires the coefficients to be in continuous memory.
+
   // realign the database to the first dimension
   const size_t fst_dim_sz = pir_params_.get_fst_dim_sz();
   const size_t other_dim_sz = pir_params_.get_other_dim_sz();
   const size_t coeff_val_cnt = pir_params_.get_coeff_val_cnt();
+  const size_t num_pt = pir_params_.get_num_pt();
+  constexpr size_t tile_sz = 16;
 
-  size_t aligned_db_idx = 0;
-  for (size_t level = 0; level < coeff_val_cnt; level++) {
+  for (size_t level_base = 0; level_base < coeff_val_cnt; level_base += tile_sz) {
     for (size_t row = 0; row < other_dim_sz; ++row) {
       for (size_t col = 0; col < fst_dim_sz; ++col) {
         uint64_t *db_ptr = db_[row * fst_dim_sz + col].value().data();  // getting the pointer to the current plaintext
-        db_aligned_[aligned_db_idx++] = db_ptr[level];  // copy the coefficient to the aligned db
+        for (size_t level = 0; level < tile_sz; level++) {
+          size_t idx = (level_base + level) * num_pt + row * fst_dim_sz + col;
+          db_aligned_[idx] = db_ptr[level_base + level];
+        }
       }
     }
   }

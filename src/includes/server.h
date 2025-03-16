@@ -80,7 +80,7 @@ private:
     This speeds up computation but takes up more memory.
   */
   void preprocess_ntt();
-
+  // Realign the database so that the first dimension calculation is in a contiguous memory.
   void realign_db();
 
   // Fill the intermediate_db_ with some ciphertext. We just need to allocate the memory.
