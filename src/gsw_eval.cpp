@@ -93,17 +93,17 @@ void GSWEval::decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<ui
   const auto &coeff_modulus = pir_params_.get_coeff_modulus();
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
+  const size_t coeff_val_cnt = pir_params_.get_coeff_val_cnt();
   const auto &context = pir_params_.get_context();
   const auto context_data = context.first_context_data();
-  constexpr size_t bits_per_uint64_sz = 64;
   auto ntt_tables = context_data->small_ntt_tables();
   seal::util::RNSBase *rns_base = context_data->rns_tool()->base_q();
   auto pool = seal::MemoryManager::GetPool();
-  std::vector<uint64_t> ct_coeffs(coeff_count * rns_mod_cnt);
+  std::vector<uint64_t> ct_coeffs(coeff_val_cnt);
 
   for (size_t poly_id = 0; poly_id < 2; poly_id++) {
     // we need a copy because we need to compose the array. This copy is very fast. 
-    memcpy(ct_coeffs.data(), ct.data(poly_id), coeff_count * rns_mod_cnt * sizeof(uint64_t));
+    memcpy(ct_coeffs.data(), ct.data(poly_id), coeff_val_cnt * sizeof(uint64_t));
     TIME_START(EXTERN_COMPOSE); 
     // the "compose_array" transform the coefficients from RNS form to multi-precision integer form. The lower bits are in the front. 
     // ! the compose and decompose functions are slow when rns_mod_cnt > 1 because mod and div operations are slow.
@@ -340,7 +340,7 @@ void GSWEval::plain_to_half_gsw_one_row(std::vector<uint64_t> const &plaintext,
   }
 }
 
-void GSWEval::sealGSWVecToGSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec) {
+void GSWEval::seal_GSW_vec_to_GSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec) {
   const size_t coeff_count = DatabaseConstants::PolyDegree;
   const size_t rns_mod_cnt = pir_params_.get_rns_mod_cnt();
 

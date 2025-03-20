@@ -91,7 +91,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
   }
 
   // reallocate the query data to a continuous memory 
-  TIME_START("Query data preparation");
+  TIME_START(FST_DIM_PREP);
   std::vector<uint64_t> query_data(fst_dim_sz * 2 * coeff_val_cnt);
   size_t query_data_idx = 0;
   for (size_t i = 0; i < coeff_val_cnt; i++) {
@@ -101,7 +101,7 @@ PirServer::evaluate_first_dim(std::vector<seal::Ciphertext> &fst_dim_query) {
       query_data_idx += 2;
     }
   }
-  TIME_END("Query data preparation");
+  TIME_END(FST_DIM_PREP);
 
   /*
   Imagine DB as a (other_dim_sz * fst_dim_sz) matrix, where each element is a
@@ -296,7 +296,7 @@ void PirServer::set_client_gsw_key(const size_t client_id, std::stringstream &gs
   }
   GSWCiphertext gsw_key;
 
-  key_gsw_.sealGSWVecToGSW(gsw_key, temp_gsw);
+  key_gsw_.seal_GSW_vec_to_GSW(gsw_key, temp_gsw);
   key_gsw_.gsw_ntt_negacyclic_harvey(gsw_key); // transform the GSW ciphertext to NTT form
 
   client_gsw_keys_[client_id] = gsw_key;
@@ -358,6 +358,7 @@ std::vector<seal::Ciphertext> PirServer::make_query(const size_t client_id, std:
   if (dims_.size() != 1) {
     for (size_t i = 1; i < dims_.size(); i++) {
       other_dim_mux(result, gsw_vec[i - 1]);
+      // batch_other_dim_mux(result, gsw_vec[i - 1]);
     }
   }
   TIME_END(OTHER_DIM_TIME);

@@ -20,3 +20,4 @@ void test_fst_dim_mult();
 
 // ======================== Other tests ========================
 void test_prime_gen();
+void test_batch_decomp();

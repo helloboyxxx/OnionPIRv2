@@ -43,9 +43,6 @@ class GSWEval {
     */
     void decomp_rlwe(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
 
-    // Similar to decomp_rlwe. Use this when rn_mod_cnt = 2. This is my attempt to optimize the right shift.
-    void decomp_rlwe_two_mods(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
-
     // Similar to decomp_rlwe. Use this when rn_mod_cnt = 1. It uses faster right shift.
     void decomp_rlwe_single_mod(seal::Ciphertext const &ct, std::vector<std::vector<uint64_t>> &output);
 
@@ -93,12 +90,9 @@ class GSWEval {
                             seal::SecretKey const &sk, const size_t half,
                             const size_t level, seal::Ciphertext &output);
 
-    /**
-    * @brief Transform the given GSWCipher text from polynomial representation to NTT representation.
-    * 
-    */
+    // Transform the given GSWCipher text from polynomial representation to NTT representation.
     void gsw_ntt_negacyclic_harvey(GSWCiphertext &gsw);
 
     // helper functions
-    void sealGSWVecToGSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec);
+    void seal_GSW_vec_to_GSW(GSWCiphertext &output, const std::vector<seal::Ciphertext> &gsw_vec);
 };
