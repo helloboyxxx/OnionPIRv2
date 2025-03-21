@@ -40,7 +40,7 @@ void utils::shift_polynomial(seal::EncryptionParameters &params, seal::Ciphertex
 }
 
 
-std::string uint128_to_string(uint128_t value) {
+std::string utils::uint128_to_string(uint128_t value) {
     // Split the 128-bit value into two 64-bit parts
     uint64_t high = value >> 64;
     uint64_t low = static_cast<uint64_t>(value);
@@ -58,7 +58,7 @@ std::string uint128_to_string(uint128_t value) {
 
 
 
-std::vector<std::vector<uint64_t>> gsw_gadget(size_t l, uint64_t base_log2, size_t rns_mod_cnt,
+std::vector<std::vector<uint64_t>> utils::gsw_gadget(size_t l, uint64_t base_log2, size_t rns_mod_cnt,
                 const std::vector<seal::Modulus> &coeff_modulus) {
   // Create RGSW gadget.
   std::vector<std::vector<uint64_t>> gadget(rns_mod_cnt, std::vector<uint64_t>(l));
@@ -80,7 +80,7 @@ std::vector<std::vector<uint64_t>> gsw_gadget(size_t l, uint64_t base_log2, size
  * @param bit_width >= 2 and <= 64
  * @return std::uint64_t  
  */
-std::uint64_t generate_prime(size_t bit_width) {
+std::uint64_t utils::generate_prime(size_t bit_width) {
   if (bit_width < 2) throw std::invalid_argument("Bit width must be at least 2.");
 
   // ================= Read from file if it exists
@@ -122,7 +122,7 @@ std::uint64_t generate_prime(size_t bit_width) {
 }
 
 // converting a uint64_t to a std::vector<uint8_t> of size 8. Assyming the input vector has at least 8 elements.
-void writeIdxToEntry(const uint64_t idx, Entry &entry) {
+void utils::writeIdxToEntry(const uint64_t idx, Entry &entry) {
   // Convert id to bytes and write them to the start of the entry.
   for (size_t i = 0; i < 8; ++i) {
     // Extract the i-th byte from the least significant to the most significant
@@ -130,7 +130,7 @@ void writeIdxToEntry(const uint64_t idx, Entry &entry) {
   }
 }
 
-uint64_t get_entry_idx(const Entry &entry) {
+uint64_t utils::get_entry_idx(const Entry &entry) {
   uint64_t idx = 0;
   for (size_t i = 0; i < 8; ++i) {
     idx |= static_cast<uint64_t>(entry[7 - i]) << (i * 8);
@@ -139,10 +139,10 @@ uint64_t get_entry_idx(const Entry &entry) {
 }
 
 
-void print_entry(const Entry &entry) {
+void utils::print_entry(const Entry &entry, const size_t count) {
   size_t cnt = 0;
   for (auto &val : entry) {
-    if (cnt < 10) { 
+    if (cnt < count) { 
       std::cout << (size_t)val << ", ";
     }
     cnt += 1;
@@ -151,7 +151,7 @@ void print_entry(const Entry &entry) {
 }
 
 
-bool entry_is_equal(const Entry &entry1, const Entry &entry2) {
+bool utils::entry_is_equal(const Entry &entry1, const Entry &entry2) {
   for (size_t i = 0; i < entry1.size(); i++) {
     if (entry1[i] != entry2[i]) {
       std::cerr << "Entries are not equal" << std::endl;
@@ -163,7 +163,7 @@ bool entry_is_equal(const Entry &entry1, const Entry &entry2) {
 }
 
 
-void print_progress(size_t current, size_t total) {
+void utils::print_progress(size_t current, size_t total) {
     float progress = static_cast<float>(current) / total;
     size_t bar_width = 70;
 
@@ -184,11 +184,11 @@ void print_progress(size_t current, size_t total) {
 }
 
 
-Entry generate_entry(const uint64_t entry_id, const size_t entry_size, std::ifstream &random_file) {
+Entry utils::generate_entry(const uint64_t entry_id, const size_t entry_size, std::ifstream &random_file) {
   Entry entry(entry_size);
 
   // write the entry_id to the first 8 bytes of the entry
-  writeIdxToEntry(entry_id, entry);
+  utils::writeIdxToEntry(entry_id, entry);
 
   // fill the rest of the entry with random bytes
   // random_file.read(reinterpret_cast<char *>(entry.data()), entry_size);
@@ -197,7 +197,7 @@ Entry generate_entry(const uint64_t entry_id, const size_t entry_size, std::ifst
 }
 
 
-size_t next_pow_of_2(const size_t n) {
+size_t utils::next_pow_of_2(const size_t n) {
   size_t p = 1;
   while (p < n) {
     p <<= 1;
@@ -205,14 +205,14 @@ size_t next_pow_of_2(const size_t n) {
   return p;
 }
 
-size_t roundup_div(const size_t numerator, const size_t denominator) {
+size_t utils::roundup_div(const size_t numerator, const size_t denominator) {
   if (denominator == 0) {
     throw std::invalid_argument("roundup_div division by zero");
   }
   return (numerator + denominator - 1) / denominator;
 }
 
-void fill_rand_arr(uint64_t *arr, size_t size) {
+void utils::fill_rand_arr(uint64_t *arr, size_t size) {
   std::ifstream rand_file("/dev/urandom", std::ios::binary);
   rand_file.read(reinterpret_cast<char *>(arr), size * sizeof(uint64_t));
   rand_file.close();

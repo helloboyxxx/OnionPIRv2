@@ -15,7 +15,7 @@ seal::EncryptionParameters PirParams::init_seal_params() {
   params.set_poly_modulus_degree(
       DatabaseConstants::PolyDegree); // example: a_1 x^4095 + a_2 x^4094 + ...
 
-  const uint64_t pt_mod = generate_prime(DatabaseConstants::PlainMod);
+  const uint64_t pt_mod = utils::generate_prime(DatabaseConstants::PlainMod);
   params.set_plain_modulus(pt_mod);
   std::vector<int> bit_sizes(DatabaseConstants::CoeffMods.begin(),
                              DatabaseConstants::CoeffMods.end());
@@ -29,7 +29,7 @@ seal::EncryptionParameters PirParams::init_seal_params() {
 PirParams::PirParams()
     : seal_params_(init_seal_params()), context_(seal_params_) {
   // =============== Setting modulus ===============
-  const uint64_t pt_mod = generate_prime(DatabaseConstants::PlainMod);
+  const uint64_t pt_mod = utils::generate_prime(DatabaseConstants::PlainMod);
   // calculate the entry size in bytes automatically.
   if (DatabaseConstants::EntrySize == 0) {
     entry_size_ = (seal::Modulus(pt_mod).bit_count() - 1) * DatabaseConstants::PolyDegree / 8;
@@ -61,12 +61,12 @@ PirParams::PirParams()
   }
 
   // =============== Database shape calculation ===============
-  auto num_pt_required = roundup_div(num_entries_, get_num_entries_per_plaintext());
+  auto num_pt_required = utils::roundup_div(num_entries_, get_num_entries_per_plaintext());
   // we first calculate other_dim_sz assuming the first dimension is full.
   // auto other_dim_sz = next_pow_of_2(num_pt_required) / DatabaseConstants::MaxFstDimSz;
-  auto other_dim_sz = roundup_div(next_pow_of_2(num_pt_required), DatabaseConstants::MaxFstDimSz);
+  auto other_dim_sz = utils::roundup_div(utils::next_pow_of_2(num_pt_required), DatabaseConstants::MaxFstDimSz);
   size_t first_dim_sz;
-  first_dim_sz = roundup_div(num_pt_required, other_dim_sz);
+  first_dim_sz = utils::roundup_div(num_pt_required, other_dim_sz);
   num_pt_ = first_dim_sz * other_dim_sz;
   num_entries_ = num_pt_ * get_num_entries_per_plaintext(); // actual number of entries after paddding.
 

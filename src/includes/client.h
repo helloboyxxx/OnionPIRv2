@@ -17,20 +17,27 @@ public:
   @return returns a seal::Ciphertext with a a seed stored in
   c_1, which should not be touched before doing serialization.
   */
-  PirQuery generate_query(const size_t entry_index);
-  static size_t write_query_to_stream(const PirQuery &query, std::stringstream &data_stream);
+  seal::Ciphertext generate_query(const size_t entry_index);
+
+  // similar to generate_query, but preparing query for fast_expand_qry.
+  seal::Ciphertext fast_generate_query(const size_t entry_index);
+  // helper function for fast_generate_query
+  void add_gsw_to_query(seal::Ciphertext &query, const std::vector<size_t> query_indices);
+
+  static size_t write_query_to_stream(const seal::Ciphertext &query, std::stringstream &data_stream);
   static size_t write_gsw_to_stream(const std::vector<Ciphertext> &gsw, std::stringstream &gsw_stream);
   size_t create_galois_keys(std::stringstream &galois_key_stream);
   std::vector<seal::Plaintext> decrypt_result(const std::vector<seal::Ciphertext> reply);
   // Retrieves an entry from the plaintext containing the entry.
   std::vector<Ciphertext> generate_gsw_from_key();
-  // The height of the expansion tree during packing unpacking stages
-  inline const size_t get_expan_height() const {
-    return std::ceil(std::log2(dims_[0] + pir_params_.get_l() * (dims_.size() - 1)));
-  }
   
   Entry get_entry_from_plaintext(const size_t entry_index, const seal::Plaintext plaintext) const;
   inline size_t get_client_id() const { return client_id_; }
+
+  inline void test_budget(seal::Ciphertext &ct) {
+    // calculate the noise budget of the ciphertext
+    BENCH_PRINT("Noise budget in the query: " << decryptor_.invariant_noise_budget(ct) << " bits");
+  }
 
 private:
   size_t client_id_;

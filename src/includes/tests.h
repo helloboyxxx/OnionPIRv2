@@ -1,23 +1,29 @@
 #pragma once
 
-void run_tests();
 
-// ! the main test for PIR
-void test_pir();
 
-// ======================== BFV & GSW tests ========================
-void bfv_example();
-void test_external_product(); 
+class PirTest {
+  public:
+    void run_tests();
 
-// ======================== SEAL Serialization ========================
-void serialization_example();
+    // ! the main test for PIR
+    void test_pir();
 
-// ======================== Matrix tests ========================
-// test the matrix multiplication performance when using only one level/degree
-void test_single_mat_mult();
-// simulation of the first dimension multiplication
-void test_fst_dim_mult();
+    // ======================== BFV & GSW tests ========================
+    void bfv_example();
+    void test_external_product(); 
 
-// ======================== Other tests ========================
-void test_prime_gen();
-void test_batch_decomp();
+    // ======================== SEAL Serialization ========================
+    void serialization_example();
+
+    // ======================== Matrix tests ========================
+    // test the matrix multiplication performance when using only one level/degree
+    void test_single_mat_mult();
+    // simulation of the first dimension multiplication
+    void test_fst_dim_mult();
+
+    // ======================== Other tests ========================
+    void test_prime_gen();
+    void test_batch_decomp();
+    void test_fast_expand_query();
+};
