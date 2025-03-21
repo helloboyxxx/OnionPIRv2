@@ -55,12 +55,12 @@ void PirServer::gen_data() {
       const size_t poly_id = row * fst_dim_sz + col;
       for (size_t local_id = 0; local_id < num_en_per_pt; ++local_id) {
         const size_t entry_id = poly_id * num_en_per_pt + local_id;
-        one_chunk[col * num_en_per_pt + local_id] = generate_entry(entry_id, entry_size, random_file);
+        one_chunk[col * num_en_per_pt + local_id] = utils::generate_entry(entry_id, entry_size, random_file);
       }
     }
     write_one_chunk(one_chunk);
     push_database_chunk(one_chunk, row);
-    print_progress(row+1, other_dim_sz);
+    utils::print_progress(row+1, other_dim_sz);
   }
   random_file.close();
   // transform the ntt_db_ from coefficient form to ntt form. db_ is not transformed.
@@ -240,40 +240,90 @@ void PirServer::other_dim_mux(std::vector<seal::Ciphertext> &result,
 // This function is using the algorithm 5 in Constant-weight PIR: Single-round Keyword PIR via Constant-weight Equality Operators.
 // https://www.usenix.org/conference/usenixsecurity22/presentation/mahdavi. Basically, the algorithm 3 in Onion-Ring ORAM has some typos.
 // And we can save one Subs(c_b, k) operation in the algorithm 3. The notations of this function follows the constant-weight PIR paper.
-std::vector<seal::Ciphertext> PirServer::expand_query(size_t client_id,
-                                                      seal::Ciphertext &ciphertext) const {
+std::vector<seal::Ciphertext>
+PirServer::expand_query(size_t client_id, seal::Ciphertext &ciphertext) const {
   seal::EncryptionParameters params = pir_params_.get_seal_params();
-  // This aligns with the number of coeff used by the client.
-  const size_t num_cts = dims_[0] + pir_params_.get_l() * (dims_.size() - 1);  
-
-  size_t log2N = 0; // log2(num_cts) rounds up. This is the same as padding num_cts to the next power of 2 then taking the log2.
-  while ((1 << log2N) < num_cts) {
-    log2N++;
-  }
-
-  // The access pattern to this array looks like this: https://raw.githubusercontent.com/helloboyxxx/images-for-notes/master/uPic/expansion.png
-  // It helps me to understand this recursion :)
-  std::vector<Ciphertext> cts((size_t)pow(2, log2N));
-  cts[0] = ciphertext;   // c_0 = c in paper
-
+  const size_t expan_height = pir_params_.get_expan_height();
   const auto& client_galois_key = client_galois_keys_.at(client_id); // used for substitution
 
-  for (size_t a = 0; a < log2N; a++) {
+  /*  Pseudu code:
+  for a = 0 .. logN do
+    k = 2^a // tree width at level a
+    for b = 0 .. k - 1 do
+      c' = Subs(c_b, n/k + 1)
+      c_{b + k} = (c_b - c') * x^{-k}
+      c_{b} = c_b + c'
+    end
+  end
+  */
 
-    const size_t expansion_const = pow(2, a);
+  // The access pattern to this array looks like this: https://raw.githubusercontent.com/chenyue42/images-for-notes/master/uPic/expansion.png
+  // It helps me to understand this recursion :)
+  std::vector<seal::Ciphertext> cts( (size_t)pow(2, expan_height) );
+  cts[0] = ciphertext;   // c_0 = c in paper
 
-    for (size_t b = 0; b < expansion_const; b++) {
-      Ciphertext cipher0 = cts[b];   // c_b in paper
+  for (size_t a = 0; a < expan_height; a++) {
+    // the number of ciphertexts in the current level of the expansion tree
+    const size_t level_size = pow(2, a);
+
+    for (size_t b = 0; b < level_size; b++) {
+      seal::Ciphertext c_prime = cts[b];
       TIME_START(APPLY_GALOIS);
-      evaluator_.apply_galois_inplace(cipher0, DatabaseConstants::PolyDegree / expansion_const + 1,
+      evaluator_.apply_galois_inplace(c_prime, DatabaseConstants::PolyDegree / level_size + 1,
                                       client_galois_key); // Subs(c_b, n/k + 1)
       TIME_END(APPLY_GALOIS);
-      Ciphertext temp;
-      evaluator_.sub(cts[b], cipher0, temp);
-      utils::shift_polynomial(params, temp,
-                              cts[b + expansion_const],
-                              -expansion_const);
-      evaluator_.add_inplace(cts[b], cipher0);
+      seal::Ciphertext temp;
+      evaluator_.sub(cts[b], c_prime, temp);
+      utils::shift_polynomial(params, temp, cts[b + level_size], -level_size);
+      evaluator_.add_inplace(cts[b], c_prime);
+    }
+  }
+
+  return cts;
+}
+
+std::vector<seal::Ciphertext>
+PirServer::fast_expand_qry(size_t client_id,
+                           seal::Ciphertext &ciphertext) const {
+  seal::EncryptionParameters params = pir_params_.get_seal_params();
+  // we want fst_dim_sz many bfv for first dimension, and l many bfv for each other dimension mux. 
+  const size_t useful_cnt = pir_params_.get_fst_dim_sz() + pir_params_.get_l() * (dims_.size() - 1);
+  const size_t expan_height = pir_params_.get_expan_height();
+  const auto& client_galois_key = client_galois_keys_.at(client_id); // used for substitution
+  std::vector<seal::Ciphertext> cts(useful_cnt);
+  DEBUG_PRINT("expansion height: " << expan_height << ", useful count: " << useful_cnt);
+
+  /*  Pseudu code:
+  nonzero_cnt = fst_dim_sz + l * (dims.size() - 1)
+  for a = 0 .. logN - 1 do
+    k = 2^a // tree width at level a
+    t = nonzero_cnt / recursive_ceil_half(nonzero_cnt, expan_height - a)
+    for b = t-1 .. 0 do
+      c' = Subs(c_b, n/k + 1)
+      c_{2b + 1} = (c_b - c') * x^{-k}
+      c_{2b} = c_b + c'
+    end
+  end
+  */
+
+  cts[0] = ciphertext;   // c_0 = c in paper
+  for (size_t a = 0; a < expan_height; a++) {
+    // the number of ciphertexts in the current level of the expansion tree
+    const size_t level_size = pow(2, a);
+    const size_t trimed_level_sz = utils::repeated_ceil_half(useful_cnt, expan_height - a);
+    // DEBUG_PRINT("Level size: " << level_size << ", Trimed level size: " << trimed_level_sz);
+    
+    for (int b = trimed_level_sz - 1; b > -1; b--) { // ! we have to reverse the order otherwise we will overwrite the cts[b] before using it.
+      seal::Ciphertext c_prime = cts[b]; 
+      TIME_START(APPLY_GALOIS);
+      evaluator_.apply_galois_inplace(c_prime, DatabaseConstants::PolyDegree / level_size + 1,
+                                      client_galois_key); // Subs(c_b, n/k + 1)
+      TIME_END(APPLY_GALOIS);
+      // ! order matters! 
+      seal::Ciphertext temp;
+      evaluator_.sub(cts[b], c_prime, temp);  // temp = c_b - c'
+      utils::shift_polynomial(params, temp, cts[2 * b + 1], -level_size); // temp * x^{-k}, store in c_{2b + 1}
+      evaluator_.add(cts[b], c_prime, cts[2 * b]);
     }
   }
 
@@ -322,13 +372,14 @@ Entry PirServer::direct_get_entry(const size_t entry_idx) const {
 
 std::vector<seal::Ciphertext> PirServer::make_query(const size_t client_id, std::stringstream &query_stream) {
   // receive the query from the client
-  PirQuery query; 
+  seal::Ciphertext query; 
   query.load(context_, query_stream);
 
   // ========================== Expansion & conversion ==========================
   // Query expansion
   TIME_START(EXPAND_TIME);
-  std::vector<seal::Ciphertext> query_vector = expand_query(client_id, query);
+  // std::vector<seal::Ciphertext> query_vector = expand_query(client_id, query);
+  std::vector<seal::Ciphertext> query_vector = fast_expand_qry(client_id, query);
   TIME_END(EXPAND_TIME);
 
   // Reconstruct RGSW queries
@@ -350,6 +401,7 @@ std::vector<seal::Ciphertext> PirServer::make_query(const size_t client_id, std:
   // ========================== Evaluations ==========================
   // Evaluate the first dimension
   TIME_START(FST_DIM_TIME);
+  query_vector.resize(dims_[0]);
   std::vector<seal::Ciphertext> result = evaluate_first_dim(query_vector);
   TIME_END(FST_DIM_TIME);
 

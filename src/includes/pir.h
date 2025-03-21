@@ -12,7 +12,6 @@ using namespace seal;
 // ================== TYPE DEFINITIONS ==================
 // Each entry is a vector of bytes
 typedef std::vector<uint8_t> Entry;
-typedef Ciphertext PirQuery;
 typedef uint64_t Key; // key in the key-value pair. 
 
 // ================== CLASS DEFINITIONS ==================
@@ -61,6 +60,10 @@ public:
   inline uint64_t get_plain_mod() const { return seal_params_.plain_modulus().value(); }
   inline std::vector<Modulus> get_coeff_modulus() const {
     return context_.first_context_data()->parms().coeff_modulus();
+  }
+  // The height of the expansion tree during packing unpacking stages
+  inline const size_t get_expan_height() const {
+    return std::ceil(std::log2(dims_[0] + get_l() * (dims_.size() - 1)));
   }
 
   // ================== helper functions ==================

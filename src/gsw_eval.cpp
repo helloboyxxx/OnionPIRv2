@@ -249,7 +249,7 @@ void GSWEval::plain_to_gsw_one_row(std::vector<uint64_t> const &plaintext,
 
   // Create RGSW gadget.
   // We only use rns_mod_cnt many gadgets, we can save some computation here. Not a big deal though. 
-  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
+  std::vector<std::vector<uint64_t>> gadget = utils::gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
 
   encryptor.encrypt_zero_symmetric(output);
   auto ct = output.data(half);
@@ -301,7 +301,7 @@ void GSWEval::plain_to_half_gsw_one_row(std::vector<uint64_t> const &plaintext,
   assert(plaintext.size() == coeff_count * rns_mod_cnt || plaintext.size() == coeff_count);
 
   // Create RGSW gadget.
-  std::vector<std::vector<uint64_t>> gadget = gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
+  std::vector<std::vector<uint64_t>> gadget = utils::gsw_gadget(l_, base_log2_, rns_mod_cnt, coeff_modulus);
 
   // ================== Second half of the seeded GSW ==================
   if (half == 1) {

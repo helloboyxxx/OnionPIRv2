@@ -15,20 +15,21 @@
 #include <Eigen/Core>
 #endif
 
-#define EXPERIMENT_ITERATIONS 8
+#define EXPERIMENT_ITERATIONS 5
 
-void run_tests() {
+void PirTest::run_tests() {
   test_pir();
   // bfv_example();
   // serialization_example();
   // test_external_product();
   // test_single_mat_mult();
   // test_fst_dim_mult();
-  test_batch_decomp();
+  // test_batch_decomp();
+  // test_fast_expand_query();
 }
 
 
-void test_pir() {
+void PirTest::test_pir() {
   print_func_name(__FUNCTION__);
   auto success_count = 0;
   
@@ -69,11 +70,13 @@ void test_pir() {
 
     // ===================== ONLINE PHASE =====================
     // Client start generating query
-    size_t entry_index = rand() % pir_params.get_num_entries();
-  
+    // size_t query_index = rand() % pir_params.get_num_entries();
+    size_t query_index = 1; 
+
     // ============= CLIENT ===============
     TIME_START(CLIENT_TOT_TIME);
-    PirQuery query = client.generate_query(entry_index);
+    // seal::Ciphertext query = client.generate_query(query_index);
+    seal::Ciphertext query = client.fast_generate_query(query_index);
     query_size = client.write_query_to_stream(query, data_stream);
     TIME_END(CLIENT_TOT_TIME);
     
@@ -86,7 +89,7 @@ void test_pir() {
     TIME_START(CLIENT_TOT_TIME);
     // client gets result from the server and decrypts it
     std::vector<seal::Plaintext> decrypted_result = client.decrypt_result(result);
-    Entry response_entry = client.get_entry_from_plaintext(entry_index, decrypted_result[0]);
+    Entry response_entry = client.get_entry_from_plaintext(query_index, decrypted_result[0]);
     TIME_END(CLIENT_TOT_TIME);
 
     // write the result to the stream to test the size
@@ -95,19 +98,19 @@ void test_pir() {
     result_stream.str(std::string()); // clear the stream
 
     // Directly get the plaintext from server. Not part of PIR.
-    Entry actual_entry = server.direct_get_entry(entry_index);
+    Entry actual_entry = server.direct_get_entry(query_index);
     // extract and print the actual entry index
-    uint64_t actual_entry_idx = get_entry_idx(actual_entry);
-    uint64_t resp_entry_idx = get_entry_idx(response_entry);
+    uint64_t actual_entry_idx = utils::get_entry_idx(actual_entry);
+    uint64_t resp_entry_idx = utils::get_entry_idx(response_entry);
     
     END_EXPERIMENT();
     // ============= PRINTING RESULTS ===============    
-    DEBUG_PRINT("\t\tWanted/resp/actual idx:\t" << entry_index << " / " << resp_entry_idx << " / " << actual_entry_idx);
+    DEBUG_PRINT("\t\tWanted/resp/actual idx:\t" << query_index << " / " << resp_entry_idx << " / " << actual_entry_idx);
     #ifdef _DEBUG
     PRINT_RESULTS(i+1);
     #endif
 
-    if (entry_is_equal(response_entry, actual_entry)) {
+    if (utils::entry_is_equal(response_entry, actual_entry)) {
       // print a green success message
       std::cout << "\033[1;32mSuccess!\033[0m" << std::endl;
       success_count++;
@@ -115,9 +118,9 @@ void test_pir() {
       // print a red failure message
       std::cout << "\033[1;31mFailure!\033[0m" << std::endl;
       std::cout << "PIR Result:\t";
-      print_entry(response_entry);
+      utils::print_entry(response_entry, 20);
       std::cout << "Actual Entry:\t";
-      print_entry(actual_entry);
+      utils::print_entry(actual_entry, 20);
     }
     PRINT_BAR;
   }
@@ -140,13 +143,13 @@ void test_pir() {
 }
 
   // This is an example of how to use the BFV scheme in SEAL and in our PIR scheme.
-void bfv_example() {
+void PirTest::bfv_example() {
   print_func_name(__FUNCTION__);
   // You need a a chunk of code to init the seal parameters. Here is the minimum you need:
   seal::EncryptionParameters params(seal::scheme_type::bfv);
   const size_t coeff_count = 4096;  // you can try other powers of two.
   params.set_poly_modulus_degree(coeff_count); // example: a_1 x^4095 + a_2 x^4094 + ...
-  const uint64_t pt_mod = generate_prime(49); // 49 bits for the plain modulus, then you can use 48 bits for storing data.
+  const uint64_t pt_mod = utils::generate_prime(49); // 49 bits for the plain modulus, then you can use 48 bits for storing data.
   params.set_plain_modulus(pt_mod);
   std::vector<int> bit_sizes({60, 60,60}); // You can also try our own DatabaseConstants::CoeffMods
   const auto coeff_modulus = CoeffModulus::Create(coeff_count, bit_sizes);
@@ -280,7 +283,7 @@ void bfv_example() {
 }
 
 
-void serialization_example() {
+void PirTest::serialization_example() {
   print_func_name(__FUNCTION__);
   PirParams pir_params;
   auto params = pir_params.get_seal_params();
@@ -364,7 +367,7 @@ void serialization_example() {
 }
 
 // This is a BFV x GSW example
-void test_external_product() {
+void PirTest::test_external_product() {
   print_func_name(__FUNCTION__);
   PirParams pir_params;
   const auto params = pir_params.get_seal_params();
@@ -455,7 +458,7 @@ void test_external_product() {
 }
 
 
-void test_single_mat_mult() {
+void PirTest::test_single_mat_mult() {
   print_func_name(__FUNCTION__);
   CLEAN_TIMER();
   // This is testing mat mat multiplication: A x B = C 
@@ -474,8 +477,8 @@ void test_single_mat_mult() {
   std::vector<uint128_t> C_data128(rows * b_cols);
 
   // Fill A and B with random data
-  fill_rand_arr(A_data.data(), rows * cols);
-  fill_rand_arr(B_data.data(), cols * b_cols);
+  utils::fill_rand_arr(A_data.data(), rows * cols);
+  utils::fill_rand_arr(B_data.data(), cols * b_cols);
   // Wrap them in our matrix_t structures
   matrix_t A_mat { A_data.data(), rows, cols, 1 };
   matrix_t B_mat { B_data.data(), cols, b_cols, 1 };
@@ -539,7 +542,7 @@ void test_single_mat_mult() {
   for (size_t i = 0; i < rows * b_cols; i++) { sum += C_data[i]; }
   BENCH_PRINT("Sum: " << sum);
   for (size_t i = 0; i < rows * b_cols; i++) { sum128 += C_data128[i]; }
-  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
+  BENCH_PRINT("Sum: " << utils::uint128_to_string(sum128));
 
   // ============= Profiling the matrix multiplication ==============
   END_EXPERIMENT();
@@ -574,7 +577,7 @@ void test_single_mat_mult() {
 }
 
 
-void test_fst_dim_mult() {
+void PirTest::test_fst_dim_mult() {
   print_func_name(__FUNCTION__);
   CLEAN_TIMER();
   // for this test, I want to know if the matrix multiplication is memory bound
@@ -598,8 +601,8 @@ void test_fst_dim_mult() {
   std::vector<uint64_t> C_data(m * p * k);
   std::vector<uint128_t> C_data_128(m * p * k);
   // Fill A and B with random data
-  fill_rand_arr(A_data.data(), m * n * k); 
-  fill_rand_arr(B_data.data(), n * p * k);
+  utils::fill_rand_arr(A_data.data(), m * n * k); 
+  utils::fill_rand_arr(B_data.data(), n * p * k);
   // Wrap them in our matrix_t structures
   matrix_t A_mat { A_data.data(), m, n, k };
   matrix_t B_mat { B_data.data(), n, p, k };
@@ -680,7 +683,7 @@ void test_fst_dim_mult() {
   BENCH_PRINT("Sum: " << sum);
   sum128 = 0;
   for (size_t i = 0; i < m * p * k; i++) { sum128 += C_data_128[i]; }
-  BENCH_PRINT("Sum: " << uint128_to_string(sum128));
+  BENCH_PRINT("Sum: " << utils::uint128_to_string(sum128));
 
 
   // ============= Profiling the matrix multiplication ==============
@@ -724,7 +727,7 @@ void test_fst_dim_mult() {
 }
 
 
-void test_batch_decomp() {
+void PirTest::test_batch_decomp() {
   // I observed that we do external product for each polynomial in the selected
   // database after first dimension multiplication. 
   // Then, I wonder if it is possible to batch the external product. 
@@ -816,4 +819,86 @@ void test_batch_decomp() {
   
   // ! And it looks like optimized CRT and NTT saves you dozens of milliseconds. Maybe not worth it. 
   // The problem is: doing many decomposition at a time requires some memory allocations.
+}
+
+
+void PirTest::test_fast_expand_query() {
+  print_func_name(__FUNCTION__);
+  
+  // In this test, I want to make sure if the fast_expand_query is working as expected.
+  // There are two ways to order the even and odd parts of a polynomial in the expanding process.
+  // One way (the normal way) is to put the even part in it's own location, and the odd part is shifted by expansion tree level size.
+  // The other way (the fast way) is to put the even part in 2b and the odd part in 2b + 1.
+  // Both of them expand like a binary tree, but the order of the resulting polynomial is different.
+  // Here is the access pattern of the normal expansion: https://raw.githubusercontent.com/chenyue42/images-for-notes/master/uPic/expansion.png
+  // And the fast expansion will look like a noremal binary tree.
+
+
+  PirParams pir_params;
+  auto params = pir_params.get_seal_params();
+  auto context_ = pir_params.get_context();
+  auto evaluator_ = seal::Evaluator(context_);
+  auto keygen_ = seal::KeyGenerator(context_);
+  auto secret_key_ = keygen_.secret_key();
+  auto encryptor_ = new seal::Encryptor(context_, secret_key_);
+  auto decryptor_ = new seal::Decryptor(context_, secret_key_);  
+  const size_t coeff_count = DatabaseConstants::PolyDegree;
+  std::stringstream query_stream;
+  const size_t fst_dim_sz = DatabaseConstants::MaxFstDimSz;
+  const size_t useful_cnt = pir_params.get_fst_dim_sz() + pir_params.get_l() * (pir_params.get_dims().size() - 1);
+
+  PirClient client(pir_params);
+  PirServer server(pir_params);
+  const size_t client_id = client.get_client_id();
+
+  // ============= setup the server ==============
+  std::stringstream galois_key_stream, gsw_stream, data_stream;
+  // Client create galois keys and gsw keys and writes to the stream (to the
+  // server)
+  client.create_galois_keys(galois_key_stream);
+  client.write_gsw_to_stream(client.generate_gsw_from_key(), gsw_stream);
+  //--------------------------------------------------------------------------------
+  // Server receives the gsw keys and galois keys and loads them when needed
+  server.set_client_galois_key(client_id, galois_key_stream);
+  server.set_client_gsw_key(client_id, gsw_stream);
+
+  // ============= Generate the query ==============
+  const size_t query_idx = 253;
+  const size_t reversed_idx = utils::bit_reverse(query_idx, pir_params.get_expan_height());
+  seal::Ciphertext normal_seeded = client.generate_query(query_idx);
+  seal::Ciphertext fast_seeded = client.fast_generate_query(query_idx);
+
+  // ============= Serialize the query ==============
+  seal::Ciphertext normal_query, fast_query;
+  normal_seeded.save(query_stream);
+  normal_query.load(context_, query_stream);
+  fast_seeded.save(query_stream);
+  fast_query.load(context_, query_stream);
+  client.test_budget(normal_query);
+  client.test_budget(fast_query);
+  // decrypt the query and print it
+  auto normal_decrypted = client.decrypt_result({normal_query});
+  auto fast_decrypted = client.decrypt_result({fast_query});
+  BENCH_PRINT("raw packed query: " << normal_decrypted[0].to_string());
+  BENCH_PRINT("fast packed query: " << fast_decrypted[0].to_string());
+  PRINT_BAR;
+
+  // ============= Expand the query ==============
+  auto normal_exp_q = server.expand_query(client_id, normal_query);
+  auto fast_exp_q = server.fast_expand_qry(client_id, fast_query);
+
+  client.test_budget(normal_exp_q[query_idx % fst_dim_sz]);
+  client.test_budget(fast_exp_q[query_idx % fst_dim_sz]);
+
+  normal_decrypted = client.decrypt_result(normal_exp_q);
+  fast_decrypted = client.decrypt_result(fast_exp_q);
+  BENCH_PRINT("normal Expanded query: " << normal_decrypted[query_idx % fst_dim_sz].to_string());
+  BENCH_PRINT("fast Expanded query: " << fast_decrypted[query_idx % fst_dim_sz].to_string());
+
+  for (size_t i = 0; i < useful_cnt; i++) {
+    // BENCH_PRINT(fast_decrypted[i].to_string());
+    if (fast_decrypted[i].to_string() == "1") {
+      BENCH_PRINT("equals one at idx: " << i << " ");
+    }
+  }
 }
